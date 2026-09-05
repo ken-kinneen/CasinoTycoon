@@ -27,6 +27,7 @@ const customers = new CustomerManager(scene, world, game, effects);
 const player = new Player(scene, camera, game);
 const hud = new HUD(game, customers);
 const ledger = new Ledger(game, () => {});
+ledger.onHide = () => { modalOpen = false; };
 
 let started = false;
 let activeGame = null;
@@ -94,18 +95,26 @@ rebuildWorld({ keepCustomers: false });
 player.model.visible = false;
 
 // ---- intro / reset ------------------------------------------------------------
+const hasSave = game.s.lifetimeEarned > 0 || game.s.playTime > 0;
+
 function start() {
   player.model.visible = true;
   $('intro').classList.add('hidden');
   modalOpen = false;
   if (!started) {
     started = true;
-    player.teleport(world.doorInside.x, world.doorInside.z - 1);
+    if (game.s.playerX !== null && game.s.playerZ !== null) {
+      player.teleport(game.s.playerX, game.s.playerZ);
+    } else {
+      player.teleport(world.doorInside.x, world.doorInside.z - 1);
+    }
     hud.show();
-    setTimeout(() => quip(game.s.lifetimeEarned > 0 ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
+    setTimeout(() => quip(hasSave ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
     setTimeout(() => customers.queue(2), 1500);
   }
 }
+
+if (hasSave) start();
 $('intro-start').onclick = start;
 $('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
 $('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; };
@@ -236,7 +245,7 @@ function frame() {
     quipTimer -= dt;
     if (quipTimer <= 0) { quipTimer = 40 + Math.random() * 30; quip(AMBIENT_QUIPS[Math.floor(Math.random() * AMBIENT_QUIPS.length)]); }
     saveTimer -= dt;
-    if (saveTimer <= 0) { saveTimer = 10; game.save(); }
+    if (saveTimer <= 0) { saveTimer = 10; game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; game.save(); }
     // zones: nearest ring the owner stands in
     currentZone = null; let best = Infinity;
     for (const z of Object.values(world.zones)) { const d = player.pos.distanceTo(z.pos); if (d < z.r && d < best) { best = d; currentZone = z; } }
@@ -259,6 +268,6 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   postfx.resize(window.innerWidth, window.innerHeight);
 });
-window.addEventListener('beforeunload', () => game.save());
+window.addEventListener('beforeunload', () => { if (started) { game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; } game.save(); });
 
 window.__casino = { game, world, customers, player, effects, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };

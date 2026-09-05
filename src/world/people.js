@@ -165,6 +165,7 @@ export function makeBouncer() {
 export function animatePerson(g, dt, { walking, walkT, drunk = false }) {
   const u = g.userData;
   u.idleT = (u.idleT || 0) + dt;
+  const blend = 1 - Math.exp(-8 * dt);
   if (walking) {
     const s = Math.sin(walkT * 9) * 0.65;
     u.legL.rotation.x = s; u.legR.rotation.x = -s; u.armL.rotation.x = -s * 0.7; u.armR.rotation.x = s * 0.7;
@@ -173,15 +174,13 @@ export function animatePerson(g, dt, { walking, walkT, drunk = false }) {
     if (u.cape) u.cape.rotation.x = 0.35 + Math.sin(walkT * 4) * 0.08;
     if (drunk) g.rotation.z = Math.sin(walkT * 3) * 0.12;
   } else {
-    const k = Math.min(1, dt * 8);
-    u.legL.rotation.x += (0 - u.legL.rotation.x) * k; u.legR.rotation.x += (0 - u.legR.rotation.x) * k;
-    g.position.y += (0 - g.position.y) * k;
-    if (u.tailL) { u.tailL.rotation.x += (-0.05 - u.tailL.rotation.x) * k; u.tailR.rotation.x = u.tailL.rotation.x; }
-    if (u.cape) u.cape.rotation.x += (0.05 - u.cape.rotation.x) * k;
-    // breathing + look around
+    u.legL.rotation.x += (0 - u.legL.rotation.x) * blend; u.legR.rotation.x += (0 - u.legR.rotation.x) * blend;
+    g.position.y += (0 - g.position.y) * blend;
+    if (u.tailL) { u.tailL.rotation.x += (-0.05 - u.tailL.rotation.x) * blend; u.tailR.rotation.x = u.tailL.rotation.x; }
+    if (u.cape) u.cape.rotation.x += (0.05 - u.cape.rotation.x) * blend;
     u.body.scale.y = 1 + Math.sin(u.idleT * 2) * 0.012;
     u.head.rotation.y = Math.sin(u.idleT * 0.7) * 0.25 + (drunk ? Math.sin(u.idleT * 2.3) * 0.15 : 0);
     u.head.rotation.z = drunk ? Math.sin(u.idleT * 1.1) * 0.12 : 0;
-    g.rotation.z += (0 - g.rotation.z) * k;
+    g.rotation.z += (0 - g.rotation.z) * blend;
   }
 }

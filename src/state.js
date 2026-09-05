@@ -58,6 +58,8 @@ function freshState() {
     lifetimeCustomers: 0,
     playTime: 0,
     won: false,
+    playerX: null,             // saved player position (null = use default)
+    playerZ: null,
   };
 }
 

@@ -299,15 +299,26 @@ export class CasinoWorld {
     return out;
   }
 
-  /** Push a circle (x,z,r) out of the colliders. Mutates pos. */
+  /** Push a circle (x,z,r) out of the colliders. Mutates pos.
+   *  Runs multiple passes so being pushed out of one box doesn't leave
+   *  the player stuck inside an adjacent one. */
   collide(pos, r) {
-    for (const c of this.colliders) {
-      const cx = Math.max(c.minX, Math.min(pos.x, c.maxX)), cz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
-      const dx = pos.x - cx, dz = pos.z - cz, d2 = dx * dx + dz * dz;
-      if (d2 < r * r) {
-        if (d2 < 1e-6) { pos.z += r; continue; }
-        const d = Math.sqrt(d2); pos.x += dx / d * (r - d); pos.z += dz / d * (r - d);
+    for (let pass = 0; pass < 3; pass++) {
+      let pushed = false;
+      for (const c of this.colliders) {
+        const cx = Math.max(c.minX, Math.min(pos.x, c.maxX));
+        const cz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
+        const dx = pos.x - cx, dz = pos.z - cz, d2 = dx * dx + dz * dz;
+        if (d2 < r * r) {
+          if (d2 < 1e-6) { pos.z += r; pushed = true; continue; }
+          const d = Math.sqrt(d2);
+          const pen = r - d;
+          pos.x += dx / d * pen;
+          pos.z += dz / d * pen;
+          pushed = true;
+        }
       }
+      if (!pushed) break;
     }
     pos.x = Math.max(-this.W / 2 - 22, Math.min(this.W / 2 + 22, pos.x));
     pos.z = Math.max(-this.D / 2 + 0.6, Math.min(this.D / 2 + 12, pos.z));

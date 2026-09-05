@@ -33,7 +33,7 @@ export class Ledger {
     game.on('money', () => { if (this.open) $('ledger-money').textContent = fmtMoney(game.s.money); });
   }
   show(tab) { if (tab) this.tab = tab; this.open = true; this.el.classList.remove('hidden'); this.render(); }
-  hide() { this.open = false; this.el.classList.add('hidden'); }
+  hide() { this.open = false; this.el.classList.add('hidden'); this.onHide && this.onHide(); }
   toggle() { this.open ? this.hide() : this.show(); }
 
   deltaHtml(effects) {
