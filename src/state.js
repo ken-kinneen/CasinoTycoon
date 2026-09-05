@@ -1,6 +1,7 @@
-import { CASINOS } from './data/casinos.js';
+import { CASINOS, CUSTOMER_TYPES } from './data/casinos.js';
 import { AD_UPGRADES, CASINO_UPGRADES, AWARDS } from './data/upgrades.js';
 import { SKILLS, SKILL_COSTS } from './data/skills.js';
+import { ACHIEVEMENTS } from './data/achievements.js';
 
 const SAVE_KEY = 'casino-tycoon-save-v1';
 
@@ -15,6 +16,7 @@ const PLAYER_BASE = {
 };
 
 export const STAT_META = {
+  capacity:      { label: 'Guest Capacity',     fmt: v => `${Math.round(v)}`,                  good: +1 },
   machines:      { label: 'Slot Machines',      fmt: v => `${Math.round(v)}`,                  good: +1 },
   tables:        { label: 'Dealer Tables',      fmt: v => `${Math.round(v)}`,                  good: +1 },
   trafficPerMin: { label: 'Walk-in Traffic',    fmt: v => `${v.toFixed(2)}/min`,               good: +1 },
@@ -52,9 +54,15 @@ function freshState() {
     lifetimeCustomers: 0,
     playTime: 0,
     won: false,
+    achievements: [],           // ids of unlocked achievements
+    achItems: [],               // model keys earned from achievements
     playerName: 'Victor Vane',
     casinoNames: {},           // { duck: 'My Casino', ... } — overrides per casino
+    floorLayouts: {},          // { duck: { machines: [...], tables: [...] }, ... } — custom positions
+    lighting: { bloom: 20, exposure: 85, grain: 12, vignette: 45 },
     godMode: false,
+    perfStats: false,
+    uncapFPS: false,
     openModal: null,           // 'settings' | 'help' | 'ledger:tab' | null
     playerX: null,             // saved player position (null = use default)
     playerZ: null,
@@ -93,6 +101,8 @@ class GameState {
         this.s.skills = { ...freshState().skills, ...(data.skills || {}) };
         this.s.casinoUpgrades = { ...freshState().casinoUpgrades, ...(data.casinoUpgrades || {}) };
         this.s.casinoNames = { ...freshState().casinoNames, ...(data.casinoNames || {}) };
+        this.s.floorLayouts = { ...freshState().floorLayouts, ...(data.floorLayouts || {}) };
+        this.s.lighting = { ...freshState().lighting, ...(data.lighting || {}) };
       }
     } catch (e) { this.s = freshState(); }
   }
@@ -237,6 +247,31 @@ class GameState {
     this.emit('upgrade', u);
   }
 
+  // ---- achievements ----------------------------------------------------------
+  checkAchievements() {
+    const newly = [];
+    for (const a of ACHIEVEMENTS) {
+      if (this.s.achievements.includes(a.id)) continue;
+      try { if (a.check(this.s, this.stats)) newly.push(a); } catch (_) {}
+    }
+    return newly;
+  }
+  claimAchievement(id) {
+    if (this.s.achievements.includes(id)) return null;
+    const a = ACHIEVEMENTS.find(x => x.id === id);
+    if (!a) return null;
+    this.s.achievements.push(id);
+    if (a.reward) this.addMoney(a.reward, 'achievement');
+    if (a.item) {
+      if (!this.s.achItems) this.s.achItems = [];
+      if (!this.s.achItems.includes(a.item)) this.s.achItems.push(a.item);
+    }
+    this.recompute();
+    this.save();
+    this.emit('achievement', a);
+    return a;
+  }
+
   // helpers for the UI
   ownsAd(id) { return this.s.adUpgrades.includes(id); }
   ownsCasinoUpgrade(id) { return this.s.casinoUpgrades[this.casinoDef.id].includes(id); }
@@ -249,9 +284,10 @@ class GameState {
     for (const u of AD_UPGRADES) if (u.model === key && s.adUpgrades.includes(u.id)) return true;
     for (const u of CASINO_UPGRADES[cid]) if (u.model === key && s.casinoUpgrades[cid].includes(u.id)) return true;
     for (const a of AWARDS) if (a.model === key && s.awards.includes(a.id)) return true;
+    if (s.achItems && s.achItems.includes(key)) return true;
     return false;
   }
 }
 
 export const game = new GameState();
-export { CASINOS, AD_UPGRADES, CASINO_UPGRADES, AWARDS, SKILLS, SKILL_COSTS };
+export { CASINOS, CUSTOMER_TYPES, AD_UPGRADES, CASINO_UPGRADES, AWARDS, SKILLS, SKILL_COSTS, ACHIEVEMENTS };

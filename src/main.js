@@ -8,11 +8,13 @@ import { CustomerManager } from './world/customers.js';
 import { Effects } from './world/effects.js';
 import { HUD, toast, quip } from './ui/hud.js';
 import { Ledger } from './ui/ledger.js';
+import { AchievementsScreen } from './ui/achievements.js';
 import { AdvertisingGame } from './minigames/advertising.js';
 import { CashRunGame } from './minigames/cashrun.js';
 import { DealerGame } from './minigames/dealer.js';
 import { fmtMoney } from './minigames/base.js';
 import { PedestrianManager } from './world/pedestrians.js';
+import { FloorEditor } from './world/editor.js';
 import * as music from './audio/music.js';
 import * as sfx from './audio/sfx.js';
 
@@ -30,9 +32,13 @@ const customers = new CustomerManager(scene, world, game, effects);
 const player = new Player(scene, camera, game);
 const hud = new HUD(game, customers);
 const ledger = new Ledger(game, () => {});
+const achScreen = new AchievementsScreen(game);
 const pedMgr = new PedestrianManager(scene, world);
+const editor = new FloorEditor(scene, camera, canvas, world);
+player.editor = editor;
 ledger.onHide = () => { modalOpen = false; setOpenModal(null); };
 ledger.onTabChange = (tab) => { setOpenModal(`ledger:${tab}`); };
+achScreen.onHide = () => { modalOpen = false; setOpenModal(null); };
 
 let started = false;
 let activeGame = null;
@@ -45,7 +51,6 @@ let quipTimer = 30;
 let saveTimer = 10;
 let currentZone = null;
 let time = 0;
-const zoneRings = [];
 
 const AMBIENT_QUIPS = [
   'Look at them. Feeding the machines. Beautiful.',
@@ -70,6 +75,7 @@ function rebuildWorld({ keepCustomers = true } = {}) {
   world.build(def, game);
   effects.build(world, def);
   postfx.setMood(MOODS[def.id]);
+  if (game.s.lighting) applyLightSettings(loadLightSettings());
   scene.fog.density = def.id === 'diablo' ? 0.012 : 0.018;
   if (!keepCustomers) customers.clearAll();
   for (const c of customers.customers) {
@@ -87,7 +93,8 @@ function rebuildWorld({ keepCustomers = true } = {}) {
   world.collide(player.pos, 0.4);
   pedMgr.world = world;
   pedMgr.clearAll();
-  refreshZoneRings();
+  editor.setWorld(world);
+  loadFloorLayout();
 }
 
 game.on('casino', () => {
@@ -98,8 +105,25 @@ game.on('casino', () => {
   toast(`Welcome to ${game.casinoDisplayName()}.`, 'good');
   quip(game.s.casino === 2 ? 'Vegas. I\'m home.' : 'Bigger floor. Bigger hoppers. Bigger everything.');
 });
-game.on('upgrade', u => { if (u.model) rebuildWorld(); });
+game.on('upgrade', u => {
+  if (!u.model) return;
+  const oldMachines = world.machines.length;
+  const oldTables = world.tables.length;
+  rebuildWorld();
+  // new machines/tables from this upgrade spawn outside for manual placement
+  const newMachines = world.machines.length;
+  const newTables = world.tables.length;
+  for (let i = oldMachines; i < newMachines; i++) editor.spawnOutside('machine', i);
+  for (let i = oldTables; i < newTables; i++) editor.spawnOutside('table', i);
+  if (newMachines > oldMachines || newTables > oldTables) {
+    toast(`New ${newMachines > oldMachines ? 'machines' : 'tables'} delivered outside. Drag them onto the floor.`, 'good', 5000);
+  }
+});
 game.on('skill', () => player.rebuildModel());
+game.on('achievement', (a) => {
+  if (achScreen.open) achScreen.render();
+  if (a.item) rebuildWorld();
+});
 game.on('won', () => setTimeout(showWin, 1500));
 let whaleToastAt = -999;
 game.on('customer', ({ type }) => { if (type === 'whale' && time - whaleToastAt > 25) { whaleToastAt = time; toast('A whale just walked in. Get to the table.', 'good'); } });
@@ -125,6 +149,7 @@ function start() {
       player.teleport(world.doorInside.x, world.doorInside.z - 1);
     }
     hud.show();
+    editor.start();
     music.start();
     setTimeout(() => quip(hasSave ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
     setTimeout(() => customers.queue(2), 1500);
@@ -137,6 +162,7 @@ function restoreOpenModal() {
   if (!m) return;
   if (m === 'settings') { openSettings(); }
   else if (m === 'help') { $('help').classList.remove('hidden'); modalOpen = true; }
+  else if (m === 'achievements') { achScreen.show(); modalOpen = true; }
   else if (m.startsWith('ledger')) { const tab = m.split(':')[1]; ledger.show(tab); modalOpen = true; }
 }
 
@@ -155,6 +181,7 @@ $('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')
 $('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
 $('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
 $('btn-ledger').onclick = () => toggleLedger();
+$('btn-achievements').onclick = () => { if (!started || activeGame) return; if (achScreen.open) { achScreen.hide(); } else if (!modalOpen) { achScreen.show(); modalOpen = true; setOpenModal('achievements'); } };
 $('btn-stats').onclick = () => hud.toggleStats();
 $('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); };
 
@@ -177,6 +204,7 @@ function openSettings() {
   $('settings-money').value = Math.floor(game.s.money);
   updateSettingsUI();
   updateGodUI();
+  updateLightUI();
   $('settings').classList.remove('hidden');
   modalOpen = true;
   setOpenModal('settings');
@@ -223,21 +251,247 @@ function closeSettings() {
 }
 $('btn-settings').onclick = () => { if (!started || activeGame) return; if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!modalOpen) openSettings(); };
 $('settings-close').onclick = closeSettings;
+$('settings').onclick = (e) => { if (e.target === $('settings')) closeSettings(); };
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
-$('settings-dev-toggle').onclick = () => { $('settings-dev').classList.toggle('hidden'); $('settings-dev-toggle').classList.toggle('open'); };
 $('settings-god').onclick = () => { game.godMode = !game.godMode; game.save(); updateGodUI(); };
-document.querySelectorAll('.hot').forEach(h => h.onclick = () => {
-  if (!started || modalOpen || activeGame) return;
-  const k = h.dataset.key;
-  if (k === 'office') return toggleLedger('casino');
-  if (k === 'advertising') { jumpTo(k); toast('Walk up to someone on the sidewalk and press F.', 'good'); return; }
-  jumpTo(k); startActivity(k);
+
+// ---- lighting settings ----------------------------------------------------------
+function loadLightSettings() { return game.s.lighting; }
+
+function applyLightSettings(ls) {
+  postfx.bloom.strength = ls.bloom / 100;
+  renderer.toneMappingExposure = ls.exposure / 100;
+  postfx.grade.uniforms.grain.value = ls.grain / 1000;
+  postfx.grade.uniforms.vignette.value = ls.vignette / 100;
+}
+
+function updateLightUI() {
+  const ls = loadLightSettings();
+  for (const key of ['bloom', 'exposure', 'grain', 'vignette']) {
+    $('settings-' + key).value = ls[key];
+    $('settings-' + key + '-num').textContent = `${ls[key]}%`;
+  }
+  updateResetButtons();
+}
+
+function onLightSlider(key) {
+  const val = parseInt($('settings-' + key).value, 10);
+  $('settings-' + key + '-num').textContent = `${val}%`;
+  if (!game.s.lighting) game.s.lighting = {};
+  game.s.lighting[key] = val;
+  applyLightSettings(loadLightSettings());
+  updateResetButtons();
+  game.save();
+}
+
+$('settings-bloom').oninput = () => onLightSlider('bloom');
+$('settings-exposure').oninput = () => onLightSlider('exposure');
+$('settings-grain').oninput = () => onLightSlider('grain');
+$('settings-vignette').oninput = () => onLightSlider('vignette');
+
+function updateResetButtons() {
+  for (const btn of document.querySelectorAll('.setting-reset')) {
+    const key = btn.dataset.key;
+    const def = parseInt(btn.dataset.default, 10);
+    const cur = parseInt($('settings-' + key).value, 10);
+    btn.classList.toggle('changed', cur !== def);
+  }
+}
+
+for (const btn of document.querySelectorAll('.setting-reset')) {
+  btn.onclick = () => {
+    const key = btn.dataset.key;
+    const def = parseInt(btn.dataset.default, 10);
+    $('settings-' + key).value = def;
+    onLightSlider(key);
+    updateResetButtons();
+  };
+}
+
+applyLightSettings(loadLightSettings());
+
+// ---- perf stats overlay ---------------------------------------------------------
+let perfOn = !!game.s.perfStats;
+const perfEl = $('perf-stats');
+let perfFrames = 0, perfTime = 0, perfFPS = 0;
+
+function updatePerfUI() {
+  $('settings-perf').classList.toggle('muted', !perfOn);
+  $('settings-perf-label').textContent = perfOn ? 'ON' : 'OFF';
+  perfEl.classList.toggle('hidden', !perfOn);
+}
+updatePerfUI();
+function perfTick(dt) {
+  if (!perfOn) return;
+  perfFrames++;
+  perfTime += dt;
+  if (perfTime >= 0.5) {
+    perfFPS = Math.round(perfFrames / perfTime);
+    perfTime = 0;
+    perfFrames = 0;
+    const si = postfx.sceneInfo;
+    const mem = renderer.info.memory;
+    const heap = performance.memory;
+    perfEl.textContent =
+      `FPS ${perfFPS}  |  Draw ${si.calls}  |  Tri ${(si.triangles / 1000).toFixed(1)}k  |  Tex ${mem.textures}  |  Geo ${mem.geometries}` +
+      (heap ? `  |  Heap ${(heap.usedJSHeapSize / 1048576).toFixed(0)}MB` : '');
+  }
+}
+$('settings-perf').onclick = () => { perfOn = !perfOn; game.s.perfStats = perfOn; game.save(); updatePerfUI(); };
+
+// ---- uncap FPS toggle -----------------------------------------------------------
+let uncapped = !!game.s.uncapFPS;
+function updateUncapUI() {
+  $('settings-uncap').classList.toggle('muted', !uncapped);
+  $('settings-uncap-label').textContent = uncapped ? 'ON' : 'OFF';
+}
+updateUncapUI();
+$('settings-uncap').onclick = () => { uncapped = !uncapped; game.s.uncapFPS = uncapped; game.save(); updateUncapUI(); };
+
+// ---- floor editor (always-on: hover outlines, click to select) ------------------
+
+// Panel buttons use pointerdown + stopPropagation so they never leak to the canvas.
+for (const btn of $('editor-info').querySelectorAll('button')) {
+  btn.addEventListener('pointerdown', e => e.stopPropagation());
+  btn.addEventListener('mousedown', e => e.stopPropagation());
+}
+
+editor.onSelect = (info, screenPos) => {
+  const panel = $('editor-info');
+
+  // Nothing selected, or we're in move mode — hide the panel
+  if (!info || info.moveMode) {
+    panel.classList.add('hidden');
+    if (!info || !info.moveMode) { $('move-tooltip').classList.add('hidden'); _lastTooltipValid = null; }
+    return;
+  }
+  $('move-tooltip').classList.add('hidden'); _lastTooltipValid = null;
+
+  // Show panel at click position
+  panel.classList.remove('hidden');
+  if (screenPos && screenPos.x) {
+    const pw = panel.offsetWidth || 240;
+    const ph = panel.offsetHeight || 200;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let px = screenPos.x + 16;
+    let py = screenPos.y - ph / 2;
+    if (px + pw > vw - 12) px = screenPos.x - pw - 16;
+    if (py < 12) py = 12;
+    if (py + ph > vh - 12) py = vh - ph - 12;
+    panel.style.left = px + 'px';
+    panel.style.top = py + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+
+  $('editor-info-type').textContent = info.type;
+  $('editor-info-name').textContent = info.name;
+  $('editor-info-stats').innerHTML = info.stats
+    .map(s => `<div class="erow"><span class="ek">${s.label}</span><span class="ev">${s.value}</span></div>`).join('');
+
+  const dealBtn = $('editor-deal');
+  if (info.type === 'Dealer Table') {
+    dealBtn.classList.remove('hidden');
+    dealBtn.disabled = !info.canInteract;
+    dealBtn.title = info.canInteract ? '' : (info.near ? 'No players at the table' : 'Walk closer to deal');
+  } else {
+    dealBtn.classList.add('hidden');
+  }
+
+  $('editor-info-hint').innerHTML = '<kbd>R</kbd> rotate · <kbd>Esc</kbd> close';
+};
+editor.onChange = () => { saveFloorLayout(); world.rebuildColliders(); };
+
+// tooltip follows the object during move mode
+const moveTooltip = $('move-tooltip');
+const TOOLTIP_OK = '<kbd>R</kbd> <span class="sep">·</span> rotate <span class="sep">·</span> click to place <span class="sep">·</span> <kbd>Esc</kbd> <span class="sep">·</span> cancel';
+const TOOLTIP_ERR = '<span class="err-msg">Can\'t place here</span> <span class="sep">·</span> <kbd>Esc</kbd> <span class="sep">·</span> cancel';
+let _lastTooltipValid = null;
+editor.onMoveUpdate = (sx, sy, valid) => {
+  moveTooltip.classList.remove('hidden');
+  moveTooltip.style.left = sx + 'px';
+  moveTooltip.style.top = (sy - 16) + 'px';
+  moveTooltip.classList.toggle('invalid', !valid);
+  if (valid !== _lastTooltipValid) {
+    moveTooltip.innerHTML = valid ? TOOLTIP_OK : TOOLTIP_ERR;
+    _lastTooltipValid = valid;
+  }
+};
+
+$('editor-move').onclick = () => editor.enterMoveMode();
+$('editor-deal').onclick = () => {
+  if (!editor.selected || editor.selected.type !== 'table') return;
+  editor.deselect();
+  startActivity('dealer');
+};
+
+// Arrange Floor button in sidebar — toggles arrange mode
+let arrangeMode = false;
+function toggleArrangeMode(force) {
+  arrangeMode = force !== undefined ? force : !arrangeMode;
+  editor.arrangeMode = arrangeMode;
+  $('btn-arrange').classList.toggle('active', arrangeMode);
+  if (arrangeMode) {
+    toast('Click any machine or table to move it.', 'good', 2500);
+  } else {
+    editor.deselect();
+  }
+}
+$('btn-arrange').onclick = () => {
+  if (!started || activeGame || modalOpen) return;
+  toggleArrangeMode();
+};
+// when editor enters move mode from any path, mark arrange as active
+const _origEnter = editor.enterMoveMode.bind(editor);
+editor.enterMoveMode = function() {
+  _origEnter();
+  if (editor.moveMode) $('btn-arrange').classList.add('active');
+};
+// when move ends, clear arrange
+const _origFinish = editor._finishMove.bind(editor);
+editor._finishMove = function() {
+  _origFinish();
+  arrangeMode = false;
+  $('btn-arrange').classList.remove('active');
+};
+
+function saveFloorLayout() {
+  const cid = game.casinoDef.id;
+  const layout = editor.getLayout();
+  if (!game.s.floorLayouts) game.s.floorLayouts = {};
+  game.s.floorLayouts[cid] = layout;
+  game.save();
+}
+function loadFloorLayout() {
+  if (!game.s.floorLayouts) return;
+  const cid = game.casinoDef.id;
+  const layout = game.s.floorLayouts[cid];
+  if (!layout) return;
+  // Apply saved positions to however many match (partial apply is fine
+  // when new machines/tables were added by an upgrade)
+  editor.applyLayout(layout);
+  world.rebuildColliders();
+}
+document.querySelectorAll('.sb-action').forEach(h => {
+  if (h.id === 'btn-arrange') return; // handled separately
+  h.onclick = () => {
+    if (!started || modalOpen || activeGame) return;
+    const k = h.dataset.key;
+    if (k === 'office') return toggleLedger('casino');
+    if (k === 'advertising') { jumpTo(k); toast('Walk up to someone on the sidewalk and press F.', 'good'); return; }
+    jumpTo(k); startActivity(k);
+  };
 });
 
 function jumpTo(key) {
-  if (key === 'advertising') { player.teleport(world.streetPos.x, world.streetPos.z); return; }
-  const z = key === 'cashrun' ? world.zones.safe : key === 'dealer' ? world.zones.dealer : world.zones.office;
+  if (key === 'advertising') { player.teleport(world.streetPos.x, world.streetPos.z, Math.PI); return; }
+  if (key === 'dealer') {
+    if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
+    return;
+  }
+  const z = key === 'cashrun' ? world.zones.safe : world.zones.office;
   if (z) player.teleport(z.pos.x, z.pos.z);
 }
 function toggleLedger(tab) {
@@ -266,6 +520,7 @@ function launchAdGame(ped) {
   const victim = { type: ped.type, difficulty: ped.difficulty, name: ped.name };
   pedMgr.remove(ped);
   player.enabled = false;
+  editor.deselect();
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
   activeGame = new AdvertisingGame(game, victim);
   activeGame.onDone = finish(res => {
@@ -288,6 +543,7 @@ function startActivity(key) {
   if (key === 'cashrun' && game.s.machineCash < 1) { toast('The hoppers are empty. Get some guests on the machines first.', 'bad'); quip('Nothing to haul. Get people in here.'); return; }
   if (key === 'dealer' && !customers.tablePlayers().length) { toast('Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.', 'bad'); quip('An empty table. My least favourite kind.'); return; }
   player.enabled = false;
+  editor.deselect();
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
   if (key === 'cashrun') {
     activeGame = new CashRunGame(game);
@@ -323,7 +579,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyU') { if (!modalOpen || ledger.open) toggleLedger(); }
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); } }
-  else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
+  else if (e.code === 'Escape') { if (editor.selected) { /* editor handles its own Escape */ } else if (achScreen.open) achScreen.hide(); else if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
   else if (e.code === 'KeyM') { music.toggleMute(); updateSettingsUI(); }
   else if (e.code === 'KeyF') {
     if (modalOpen) return;
@@ -333,28 +589,14 @@ window.addEventListener('keydown', e => {
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
   else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
   else if (!modalOpen && e.code === 'Digit3') jumpTo('dealer');
+  else if (!modalOpen && e.code === 'KeyG') toggleArrangeMode();
 });
-
-// ---- zone rings ---------------------------------------------------------------
-function refreshZoneRings() {
-  for (const r of zoneRings) scene.remove(r);
-  zoneRings.length = 0;
-  for (const z of Object.values(world.zones)) {
-    const g = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.RingGeometry(z.r - 0.12, z.r, 48), new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.6, side: THREE.DoubleSide, toneMapped: false }));
-    ring.rotation.x = -Math.PI / 2; g.add(ring);
-    const inner = new THREE.Mesh(new THREE.CircleGeometry(z.r - 0.14, 48), new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
-    inner.rotation.x = -Math.PI / 2; g.add(inner);
-    g.position.set(z.pos.x, 0.15, z.pos.z);
-    g.userData = { ring, inner };
-    scene.add(g); zoneRings.push(g);
-  }
-}
 
 // ---- main loop ------------------------------------------------------------------
 const clock = new THREE.Clock();
 function frame() {
-  requestAnimationFrame(frame);
+  if (uncapped) setTimeout(frame, 0);
+  else requestAnimationFrame(frame);
   const dt = Math.min(0.05, clock.getDelta());
   time += dt;
   window.__activeGame = activeGame;
@@ -370,7 +612,6 @@ function frame() {
       for (const z of Object.values(world.zones)) { const d = player.pos.distanceTo(z.pos); if (d < z.r && d < best) { best = d; currentZone = z; } }
       hud.setPrompt(currentZone ? currentZone.label : null, currentZone ? (currentZone.key === 'office' ? 'office' : currentZone.key) : null);
     }
-    for (const g of zoneRings) { const near = currentZone && Math.abs(g.position.x - currentZone.pos.x) < 0.01 && Math.abs(g.position.z - currentZone.pos.z) < 0.01; g.userData.ring.material.opacity = (near ? 0.9 : 0.45) + Math.sin(time * 3) * 0.15; g.userData.inner.material.opacity = near ? 0.16 : 0.06; g.rotation.y = time * 0.3; }
   } else if (started) {
     player.enabled = false;
     nearbyPed = null;
@@ -403,7 +644,10 @@ function frame() {
   else { camera.position.set(Math.sin(time * 0.08) * 16, 5.5, world.D / 2 + 15); camera.lookAt(0, 3, world.D / 2 - 4); }
   world.update(dt, time);
   effects.update(dt);
+  editor.playerPos.copy(player.pos);
+  editor.update(dt, time);
   if (!activeGame) postfx.render(dt);
+  perfTick(dt);
 }
 frame();
 
@@ -415,4 +659,4 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('beforeunload', () => { if (started) { game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; } game.save(); });
 
-window.__casino = { game, world, customers, player, effects, pedMgr, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };
+window.__casino = { game, world, customers, player, effects, pedMgr, editor, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };

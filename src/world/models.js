@@ -12,27 +12,53 @@ export function mat(color, opts = {}) {
   if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.75, metalness: 0.05, ...opts }));
   return matCache.get(key);
 }
-export function glow(color, intensity = 1.2, opts = {}) { return mat(color, { emissive: color, emissiveIntensity: intensity, roughness: 0.4, ...opts }); }
+export function glow(color, intensity = 1.2, opts = {}) { return mat(color, { emissive: color, emissiveIntensity: Math.min(intensity, 1.2), roughness: 0.4, ...opts }); }
 export const GOLD = () => mat(0xe8b923, { metalness: 0.85, roughness: 0.28, flatShading: false, envMapIntensity: 0.3 });
 export const CHROME = () => mat(0xb8bcc6, { metalness: 0.85, roughness: 0.32, flatShading: false, envMapIntensity: 0.25 });
 export const BLACK_GLOSS = () => mat(0x0c0c12, { metalness: 0.3, roughness: 0.25, flatShading: false });
-export function texMat(map, opts = {}) { return new THREE.MeshStandardMaterial({ map, roughness: 0.8, metalness: 0.02, ...opts }); }
+const texMatCache = new Map();
+export function texMat(map, opts = {}) {
+  const key = `${map.uuid}|${JSON.stringify(opts)}`;
+  if (!texMatCache.has(key)) texMatCache.set(key, new THREE.MeshStandardMaterial({ map, roughness: 0.8, metalness: 0.02, ...opts }));
+  return texMatCache.get(key);
+}
+
+const geoCache = new Map();
+function cachedBoxGeo(w, h, d) {
+  const k = `b${w},${h},${d}`;
+  if (!geoCache.has(k)) { const g = new THREE.BoxGeometry(w, h, d); g._cached = true; geoCache.set(k, g); }
+  return geoCache.get(k);
+}
+function cachedCylGeo(rt, rb, h, seg) {
+  const k = `c${rt},${rb},${h},${seg}`;
+  if (!geoCache.has(k)) { const g = new THREE.CylinderGeometry(rt, rb, h, seg); g._cached = true; geoCache.set(k, g); }
+  return geoCache.get(k);
+}
+function cachedSphGeo(r, seg) {
+  const k = `s${r},${seg}`;
+  if (!geoCache.has(k)) { const g = new THREE.SphereGeometry(r, seg, seg); g._cached = true; geoCache.set(k, g); }
+  return geoCache.get(k);
+}
 
 export function box(w, h, d, material, x = 0, y = 0, z = 0) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+  const m = new THREE.Mesh(cachedBoxGeo(w, h, d), material);
+  m.position.set(x, y, z);
+  const big = w > 1.0 && h > 0.5 && d > 1.0;
+  m.castShadow = big; m.receiveShadow = true; return m;
 }
 export function cyl(rt, rb, h, material, x = 0, y = 0, z = 0, seg = 12) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), material);
-  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m;
+  const m = new THREE.Mesh(cachedCylGeo(rt, rb, h, seg), material);
+  m.position.set(x, y, z);
+  const big = Math.max(rt, rb) > 0.5 && h > 0.5;
+  m.castShadow = big; m.receiveShadow = true; return m;
 }
 export function sph(r, material, x = 0, y = 0, z = 0, seg = 10) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(r, seg, seg), material);
-  m.position.set(x, y, z); m.castShadow = true; return m;
+  const m = new THREE.Mesh(cachedSphGeo(r, seg), material);
+  m.position.set(x, y, z); m.castShadow = r > 0.5; return m;
 }
 export function torus(r, tube, material, x = 0, y = 0, z = 0, arc = Math.PI * 2) {
   const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 8, 24, arc), material);
-  m.position.set(x, y, z); m.castShadow = true; return m;
+  m.position.set(x, y, z); m.castShadow = r > 0.3; return m;
 }
 export function plane(w, h, material, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), material);
@@ -47,7 +73,7 @@ export function textPlane(text, { w = 4, h = 1, color = '#ffcc00', font = 'bold 
 }
 
 /** Neon tube text: bright emissive plane + a coloured point light. */
-export function makeNeonSign(text, color = '#ffcc00', w = 7, { intensity = 12, font } = {}) {
+export function makeNeonSign(text, color = '#ffcc00', w = 7, { intensity = 6, font } = {}) {
   const g = new THREE.Group();
   const t = textPlane(text, { w, h: w * 0.26, color: '#ffffff', glowColor: color, emissive: true, font });
   t.material.color = new THREE.Color(color).multiplyScalar(2.2);
@@ -216,7 +242,7 @@ export function makeDesk() {
   // banker's lamp
   g.add(cyl(0.08, 0.1, 0.03, GOLD(), -0.7, 0.87, -0.2, 10)); g.add(cyl(0.015, 0.015, 0.3, GOLD(), -0.7, 1.0, -0.2, 6));
   g.add(box(0.36, 0.14, 0.2, glow(0x1e8a4a, 0.9), -0.7, 1.15, -0.2));
-  const lamp = new THREE.PointLight(0x7fffb0, 2.5, 3.5, 2); lamp.position.set(-0.7, 1.05, -0.1); g.add(lamp);
+  const deskLamp = new THREE.PointLight(0x7fffb0, 2.5, 3.5, 2); deskLamp.position.set(-0.7, 1.05, -0.1); g.add(deskLamp);
   // ledger, cash, whiskey, ashtray
   g.add(box(0.45, 0.06, 0.6, mat(0x2b1a10), 0.1, 0.88, 0.1));
   g.add(box(0.4, 0.14, 0.28, glow(0x3cb371, 0.15), 0.7, 0.92, 0.25));
@@ -272,7 +298,6 @@ export function makeATM() {
   g.add(box(0.5, 0.18, 0.04, mat(0x0a0a0a), 0, 0.98, 0.31));
   for (let i = 0; i < 12; i++) g.add(box(0.08, 0.02, 0.06, mat(0xdddddd), -0.15 + (i % 3) * 0.15, 1.06 - Math.floor(i / 3) * 0.05, 0.33));
   const s = textPlane('ATM · 9% FEE', { w: 0.7, h: 0.18, color: '#fff', glowColor: '#99ddff' }); s.position.set(0, 1.55, 0.31); g.add(s);
-  const l = new THREE.PointLight(0x99ddff, 1.5, 3, 2); l.position.set(0, 1.3, 0.6); g.add(l);
   return g;
 }
 
@@ -285,7 +310,7 @@ export function makeSconce(color = 0xffb060) {
   return g;
 }
 
-export function makeChandelier(r = 1.2) {
+export function makeChandelier(r = 1.2, useLight = true) {
   const g = new THREE.Group();
   g.add(cyl(0.02, 0.02, 1.2, GOLD(), 0, 0.6, 0, 6));
   g.add(torus(r, 0.05, GOLD(), 0, 0, 0).rotateX(Math.PI / 2));
@@ -295,8 +320,13 @@ export function makeChandelier(r = 1.2) {
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.add(sph(0.06, glow(0xfff2c0, 2.2), Math.cos(a) * r * 0.55, -0.25, Math.sin(a) * r * 0.55, 8)); }
   // crystals
   for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2; g.add(box(0.04, 0.16 + Math.random() * 0.1, 0.04, mat(0xffffff, { metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.7, flatShading: false }), Math.cos(a) * r, -0.12, Math.sin(a) * r)); }
-  const l = new THREE.PointLight(0xffe2b0, 30, 18, 1.6); l.position.y = -0.2; g.add(l);
-  g.userData.light = l;
+  if (useLight) {
+    const l = new THREE.PointLight(0xffe2b0, 10, 18, 1.6); l.position.y = -0.2; g.add(l);
+    g.userData.light = l;
+  } else {
+    g.add(sph(0.3, glow(0xffe2b0, 1.0, { transparent: true, opacity: 0.5 }), 0, -0.15, 0, 8));
+    g.userData.light = { intensity: 0, color: { set() {} } };
+  }
   return g;
 }
 
@@ -562,7 +592,7 @@ export function makeStatue(kind = 'rat') {
     g.add(cyl(0.09, 0.09, 0.9, gold, -0.55, 1.75, 0, 8));
     g.add(cyl(0.03, 0.03, 1.1, gold, -0.55, 1.2, 0.05, 6)); // cane
   }
-  const l = new THREE.PointLight(0xffd070, 6, 6, 2); l.position.set(0, 2.4, 1); g.add(l);
+  const l = new THREE.PointLight(0xffd070, 4, 5, 2); l.position.set(0, 2.4, 1); g.add(l);
   return g;
 }
 
@@ -575,7 +605,6 @@ export function makeToilet() {
   g.add(cyl(0.26, 0.26, 0.02, mat(0x8fd3ff, { roughness: 0.05, metalness: 0.2, flatShading: false }), 0, 0.46, 0.05, 14));
   g.add(cyl(0.02, 0.02, 0.2, gold, 0.18, 1.0, -0.32, 6));
   g.add(box(1.0, 0.06, 1.0, mat(0x8b0000, { roughness: 0.6 }), 0, 0.03, 0));
-  const spot = new THREE.PointLight(0xffd070, 5, 4, 2); spot.position.set(0, 1.6, 0.5); g.add(spot);
   const rope = makeVelvetRope(1.6); rope.position.z = 0.8; g.add(rope);
   const s = textPlane('SOLID GOLD · DO NOT SIT', { w: 1.4, h: 0.2, color: '#e8b923' }); s.position.set(0, 1.25, -0.2); g.add(s);
   return g;
@@ -611,7 +640,7 @@ export function makeFountain() {
   g.add(cyl(0.1, 0.16, 0.7, marble, 0, 1.95, 0, 10));
   const jet = cyl(0.08, 0.02, 0.9, glow(0xfff2b0, 0.6, { transparent: true, opacity: 0.8 }), 0, 2.7, 0, 8); g.add(jet);
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; g.add(cyl(0.03, 0.01, 0.9, glow(0xfff2b0, 0.5, { transparent: true, opacity: 0.6 }), Math.cos(a) * 0.5, 1.3, Math.sin(a) * 0.5, 6).rotateZ(Math.cos(a) * 0.6).rotateX(-Math.sin(a) * 0.6)); }
-  const l = new THREE.PointLight(0xffe8a0, 8, 8, 2); l.position.y = 2.5; g.add(l);
+  const l = new THREE.PointLight(0xffe8a0, 4, 8, 2); l.position.y = 2.5; g.add(l);
   g.userData.jet = jet;
   return g;
 }
@@ -622,7 +651,7 @@ export function makeVolcano() {
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; g.add(box(0.3, 0.5, 0.3, mat(0x2a1a10), Math.cos(a) * 2.0, 0.6, Math.sin(a) * 2.0).rotateY(a)); }
   const lava = cyl(0.8, 0.8, 0.2, glow(0xff4400, 2.5), 0, 2.65, 0, 14); g.add(lava);
   for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; g.add(box(0.12, 1.2, 0.12, glow(0xff5a00, 1.8), Math.cos(a) * 1.2, 1.4, Math.sin(a) * 1.2).rotateZ(Math.cos(a) * 0.9).rotateX(Math.sin(a) * 0.9)); }
-  const light = new THREE.PointLight(0xff5500, 14, 14, 1.8); light.position.y = 3; g.add(light);
+  const light = new THREE.PointLight(0xff5500, 6, 14, 1.8); light.position.y = 3; g.add(light);
   g.add(torus(3.0, 0.15, mat(0x1a1a1a, { roughness: 0.3 }), 0, 0.08, 0).rotateX(Math.PI / 2));
   g.userData = { lava, light };
   return g;
@@ -632,8 +661,37 @@ export function makeTower(color = 0x3a1a1a) {
   const g = new THREE.Group();
   g.add(box(14, 30, 10, mat(color, { roughness: 0.6 }), 0, 15, 0));
   g.add(box(14.4, 0.4, 10.4, GOLD(), 0, 30.2, 0));
-  for (let y = 2; y < 29; y += 2.2) for (let x = -5.5; x <= 5.5; x += 1.6) if (Math.random() < 0.8) g.add(box(0.9, 1.2, 0.06, glow(0xffe08a, 0.3 + Math.random() * 0.6), x, y, 5.04));
-  for (let y = 2; y < 29; y += 2.2) for (let z = -3.5; z <= 3.5; z += 1.6) if (Math.random() < 0.8) g.add(box(0.06, 1.2, 0.9, glow(0xffe08a, 0.3 + Math.random() * 0.6), 7.04, y, z));
+
+  // Windows via InstancedMesh (was ~200 individual boxes)
+  const winGeoFront = cachedBoxGeo(0.9, 1.2, 0.06);
+  const winGeoSide = cachedBoxGeo(0.06, 1.2, 0.9);
+  const winMat = glow(0xffe08a, 0.5);
+  const positions = [];
+  for (let y = 2; y < 29; y += 2.2) for (let x = -5.5; x <= 5.5; x += 1.6) if (Math.random() < 0.8) positions.push({ x, y, z: 5.04, side: false });
+  const sidePosns = [];
+  for (let y = 2; y < 29; y += 2.2) for (let z = -3.5; z <= 3.5; z += 1.6) if (Math.random() < 0.8) sidePosns.push({ x: 7.04, y, z, side: true });
+
+  if (positions.length) {
+    const im = new THREE.InstancedMesh(winGeoFront, winMat, positions.length);
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < positions.length; i++) {
+      dummy.position.set(positions[i].x, positions[i].y, positions[i].z);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    }
+    g.add(im);
+  }
+  if (sidePosns.length) {
+    const im = new THREE.InstancedMesh(winGeoSide, winMat, sidePosns.length);
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < sidePosns.length; i++) {
+      dummy.position.set(sidePosns[i].x, sidePosns[i].y, sidePosns[i].z);
+      dummy.updateMatrix();
+      im.setMatrixAt(i, dummy.matrix);
+    }
+    g.add(im);
+  }
+
   g.add(box(2, 3, 2, mat(color), 0, 32, 0)); g.add(cyl(0.05, 0.05, 6, CHROME(), 0, 36, 0, 6)); g.add(sph(0.2, glow(0xff0000, 4), 0, 39, 0, 8));
   const t = makeNeonSign('PALAZZO DIABLO', '#ff2255', 12, { intensity: 20 }); t.position.set(0, 27, 5.2); g.add(t);
   g.userData.sign = t;
@@ -668,7 +726,7 @@ export function makeBus(color = 0xffcc00, text = 'PLAY TO WIN!') {
   for (let i = -2; i <= 2; i++) for (const s of [1, -1]) g.add(box(0.85, 0.6, 0.06, mat(0x203050, { roughness: 0.1, metalness: 0.4, flatShading: false }), i * 1.1, 1.75, s * 1.11));
   g.add(box(0.06, 0.9, 1.9, mat(0x203050, { roughness: 0.1, metalness: 0.4, flatShading: false }), 3.01, 1.6, 0));
   for (const z of [-0.7, 0.7]) { g.add(sph(0.14, glow(0xfff2b0, 3), 3.05, 0.95, z, 8)); g.add(sph(0.1, glow(0xff2222, 2.5), -3.05, 0.95, z, 8)); }
-  const head = new THREE.SpotLight(0xfff2b0, 40, 18, 0.5, 0.6, 1.5); head.position.set(3, 0.9, 0); head.target.position.set(12, 0, 0); g.add(head); g.add(head.target);
+  const head = new THREE.SpotLight(0xfff2b0, 12, 18, 0.5, 0.6, 1.5); head.position.set(3, 0.9, 0); head.target.position.set(12, 0, 0); g.add(head); g.add(head.target);
   for (const x of [-2, 2]) for (const z of [-1.1, 1.1]) { g.add(cyl(0.45, 0.45, 0.3, mat(0x111111), x, 0.45, z, 14).rotateX(Math.PI / 2)); g.add(cyl(0.25, 0.25, 0.32, CHROME(), x, 0.45, z, 10).rotateX(Math.PI / 2)); }
   const t = textPlane(text, { w: 5.2, h: 0.7, color: '#111', font: 'bold 110px Impact, Arial Black' });
   t.position.set(0, 1.0, 1.16); g.add(t);
@@ -699,7 +757,7 @@ export function makeBillboard(text = 'YOU WILL WIN*', sub = '*you will not win')
   const s = textPlane(sub, { w: 8.5, h: 0.7, color: '#555', font: 'italic 50px Georgia' }); s.position.set(0, 5.7, 0.17); g.add(s);
   // the owner's face, smug
   const face = plane(1.6, 1.6, new THREE.MeshBasicMaterial({ map: T.faceTexture('sneer', '#e0ac69') }), -3.4, 7.1, 0.17); g.add(face);
-  for (const x of [-3, 0, 3]) { const l = new THREE.SpotLight(0xffffff, 30, 10, 0.7, 0.5, 1.2); l.position.set(x, 4.6, 1.6); l.target.position.set(x, 7, 0); g.add(l); g.add(l.target); }
+  for (const x of [-3, 0, 3]) { const l = new THREE.SpotLight(0xffffff, 10, 10, 0.7, 0.5, 1.2); l.position.set(x, 4.6, 1.6); l.target.position.set(x, 7, 0); g.add(l); g.add(l.target); }
   return g;
 }
 
@@ -747,7 +805,857 @@ export function makeStreetLamp() {
   g.add(cyl(0.2, 0.25, 0.3, mat(0x2a2a30, { metalness: 0.6 }), 0, 0.15, 0, 8));
   g.add(box(0.4, 0.14, 0.4, mat(0x2a2a30), 0, 5.2, 0));
   g.add(box(0.3, 0.16, 0.3, glow(0xffd9a0, 2.2), 0, 5.06, 0));
-  const l = new THREE.PointLight(0xffd9a0, 60, 22, 1.7); l.position.set(0, 5, 0); g.add(l);
+  const l = new THREE.PointLight(0xffd9a0, 18, 22, 1.7); l.position.set(0, 5, 0); g.add(l);
   g.userData.light = l;
+  return g;
+}
+
+// ---------------------------------------------------------------------------
+// luxury casino props — Palazzo Diablo room dividers, arches, urns, etc.
+// ---------------------------------------------------------------------------
+
+/** Decorative archway: two pillars with a curved arch and gold keystone. */
+export function makeArch(w = 3.5, h = 4.5) {
+  const g = new THREE.Group();
+  const marble = mat(0xd8d0c8, { roughness: 0.25, metalness: 0.05, flatShading: false });
+  const gold = GOLD();
+  // pillars
+  for (const sx of [-w / 2, w / 2]) {
+    g.add(box(0.35, h - 1.2, 0.35, marble, sx, (h - 1.2) / 2, 0));
+    g.add(box(0.5, 0.12, 0.5, marble, sx, 0.06, 0));
+    g.add(box(0.5, 0.12, 0.5, marble, sx, h - 1.25, 0));
+    g.add(box(0.55, 0.06, 0.55, gold, sx, h - 1.13, 0));
+  }
+  // arch curve — approximated with boxes
+  const archSegs = 12;
+  for (let i = 0; i <= archSegs; i++) {
+    const a = (i / archSegs) * Math.PI;
+    const ax = Math.cos(a) * (w / 2 - 0.15);
+    const ay = h - 1.2 + Math.sin(a) * 1.1;
+    const seg = box(0.25, 0.15, 0.35, marble, ax, ay, 0);
+    seg.rotation.z = -a + Math.PI / 2;
+    g.add(seg);
+  }
+  // keystone at top
+  g.add(box(0.2, 0.25, 0.38, gold, 0, h + 0.1, 0));
+  // gold filigree line along the arch
+  for (let i = 1; i < archSegs; i += 2) {
+    const a = (i / archSegs) * Math.PI;
+    g.add(sph(0.035, gold, Math.cos(a) * (w / 2 - 0.15), h - 1.2 + Math.sin(a) * 1.1, 0.18, 6));
+  }
+  return g;
+}
+
+/** Grand ornamental urn on a pedestal. */
+export function makeOrnateUrn() {
+  const g = new THREE.Group();
+  const marble = mat(0xd8d0c8, { roughness: 0.25, flatShading: false });
+  const gold = GOLD();
+  // pedestal
+  g.add(box(0.5, 0.4, 0.5, marble, 0, 0.2, 0));
+  g.add(box(0.55, 0.06, 0.55, gold, 0, 0.43, 0));
+  // urn body
+  g.add(cyl(0.14, 0.25, 0.15, marble, 0, 0.52, 0, 12));
+  g.add(cyl(0.3, 0.14, 0.5, marble, 0, 0.8, 0, 12));
+  g.add(cyl(0.22, 0.3, 0.3, marble, 0, 1.2, 0, 12));
+  g.add(cyl(0.18, 0.22, 0.1, marble, 0, 1.4, 0, 12));
+  // gold rim and handles
+  g.add(torus(0.22, 0.02, gold, 0, 1.38, 0).rotateX(Math.PI / 2));
+  g.add(torus(0.3, 0.015, gold, 0, 1.05, 0).rotateX(Math.PI / 2));
+  for (const sx of [-1, 1]) {
+    const handle = torus(0.08, 0.02, gold, sx * 0.32, 1.1, 0, Math.PI);
+    handle.rotation.z = sx * Math.PI / 2;
+    g.add(handle);
+  }
+  // dried flower sprigs
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const stem = cyl(0.01, 0.01, 0.4, mat(0x2a5a2a), Math.cos(a) * 0.06, 1.6, Math.sin(a) * 0.06, 4);
+    stem.rotation.z = (i % 2 ? 0.3 : -0.3) * Math.cos(a);
+    stem.rotation.x = 0.3 * Math.sin(a);
+    g.add(stem);
+  }
+  return g;
+}
+
+/** Ceiling rosette: ornamental disc at a ceiling beam intersection. */
+export function makeCeilingRosette(r = 0.6) {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  const cream = mat(0xe8e0d0, { roughness: 0.3, flatShading: false });
+  g.add(cyl(r, r, 0.04, cream, 0, 0, 0, 20));
+  g.add(torus(r, 0.03, gold, 0, -0.01, 0).rotateX(Math.PI / 2));
+  g.add(torus(r * 0.6, 0.02, gold, 0, -0.02, 0).rotateX(Math.PI / 2));
+  // petal relief
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    g.add(box(r * 0.35, 0.02, 0.06, gold, Math.cos(a) * r * 0.42, -0.02, Math.sin(a) * r * 0.42).rotateY(-a));
+  }
+  g.add(sph(0.08, gold, 0, -0.06, 0, 8));
+  return g;
+}
+
+/** Palm tree: tall tropical plant for luxury interiors. */
+export function makePalmTree() {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  // pot
+  g.add(cyl(0.35, 0.28, 0.6, mat(0x1a1a1a, { roughness: 0.3 }), 0, 0.3, 0, 10));
+  g.add(cyl(0.37, 0.37, 0.04, gold, 0, 0.62, 0, 10));
+  // trunk
+  g.add(cyl(0.06, 0.09, 2.0, mat(0x6b5a3a, { roughness: 0.8 }), 0, 1.6, 0, 8));
+  // trunk rings
+  for (let y = 0.8; y < 2.5; y += 0.25) g.add(torus(0.075, 0.012, mat(0x5a4a2a, { roughness: 0.8 }), 0, y, 0).rotateX(Math.PI / 2));
+  // fronds — larger leaf shapes
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const frond = new THREE.Group();
+    frond.add(box(0.06, 0.02, 1.2, mat(0x1f7a3a, { side: THREE.DoubleSide, roughness: 0.6 }), 0, 0, 0.6));
+    // leaf blades along the stem
+    for (let j = 0; j < 5; j++) {
+      const lz = 0.2 + j * 0.22;
+      for (const side of [-1, 1]) {
+        const blade = box(0.3 - j * 0.03, 0.01, 0.06, mat(0x1f7a3a, { side: THREE.DoubleSide, roughness: 0.6 }), side * 0.18, 0, lz);
+        blade.rotation.y = side * 0.3;
+        frond.add(blade);
+      }
+    }
+    frond.position.set(0, 2.6, 0);
+    frond.rotation.y = a;
+    frond.rotation.x = 0.5 + Math.sin(i) * 0.15;
+    g.add(frond);
+  }
+  return g;
+}
+
+/** Large luxury aquarium on a marble stand with coral, sand, and fish. */
+export function makeAquarium(w = 4, h = 2.2, d = 1.2) {
+  const g = new THREE.Group();
+  const marble = mat(0xd8d0c8, { roughness: 0.25, flatShading: false });
+  const gold = GOLD();
+  const glass = mat(0x88ccee, { roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.25, flatShading: false, side: THREE.DoubleSide });
+  const water = mat(0x2a6a8a, { roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55, flatShading: false });
+
+  // marble stand
+  g.add(box(w + 0.2, 0.8, d + 0.2, marble, 0, 0.4, 0));
+  g.add(box(w + 0.3, 0.06, d + 0.3, gold, 0, 0.83, 0));
+  // stand legs (ornate pedestal style)
+  for (const [lx, lz] of [[-w / 2 + 0.15, -d / 2 + 0.15], [w / 2 - 0.15, -d / 2 + 0.15], [-w / 2 + 0.15, d / 2 - 0.15], [w / 2 - 0.15, d / 2 - 0.15]])
+    g.add(box(0.18, 0.04, 0.18, gold, lx, 0.02, lz));
+
+  // tank frame — gold edges
+  const tankY = 0.86 + h / 2;
+  g.add(box(w + 0.06, 0.06, d + 0.06, gold, 0, 0.86, 0));
+  g.add(box(w + 0.06, 0.06, d + 0.06, gold, 0, 0.86 + h, 0));
+  for (const [cx, cz] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]])
+    g.add(box(0.06, h, 0.06, gold, cx, tankY, cz));
+
+  // glass panels
+  g.add(box(w, h, 0.03, glass, 0, tankY, d / 2));
+  g.add(box(w, h, 0.03, glass, 0, tankY, -d / 2));
+  g.add(box(0.03, h, d, glass, -w / 2, tankY, 0));
+  g.add(box(0.03, h, d, glass, w / 2, tankY, 0));
+
+  // water fill
+  g.add(box(w - 0.1, h - 0.15, d - 0.1, water, 0, tankY - 0.07, 0));
+
+  // sand bed
+  g.add(box(w - 0.12, 0.12, d - 0.12, mat(0xd4c090, { roughness: 0.9 }), 0, 0.92, 0));
+
+  // coral pieces
+  const coralCols = [0xff6b6b, 0xff9a5c, 0xc77dff, 0x5ce1e6, 0xffd93d];
+  for (let i = 0; i < 5; i++) {
+    const cx = (i - 2) * (w * 0.18);
+    const coralH = 0.3 + Math.random() * 0.5;
+    g.add(cyl(0.06, 0.12, coralH, mat(coralCols[i], { roughness: 0.7 }), cx, 1.0 + coralH / 2, (Math.random() - 0.5) * (d * 0.5), 6));
+    // branching bits
+    for (let b = 0; b < 2; b++) {
+      const bh = coralH * 0.5;
+      const branch = cyl(0.03, 0.06, bh, mat(coralCols[(i + 1) % 5], { roughness: 0.7 }),
+        cx + (b - 0.5) * 0.15, 1.0 + coralH * 0.6 + bh / 2, (Math.random() - 0.5) * (d * 0.4), 5);
+      branch.rotation.z = (b - 0.5) * 0.5;
+      g.add(branch);
+    }
+  }
+
+  // rocks
+  for (let i = 0; i < 4; i++) {
+    const rx = (Math.random() - 0.5) * (w * 0.7);
+    const rz = (Math.random() - 0.5) * (d * 0.4);
+    g.add(sph(0.08 + Math.random() * 0.08, mat(0x6a6a70, { roughness: 0.8 }), rx, 0.98, rz, 6));
+  }
+
+  // fish — small colored ellipsoids that will be animated
+  const fishGroup = new THREE.Group();
+  const fishColors = [0xff6347, 0xffd700, 0x4169e1, 0xff69b4, 0x00ced1, 0xff8c00, 0x9370db, 0x32cd32];
+  for (let i = 0; i < 8; i++) {
+    const fish = new THREE.Group();
+    const bodyMat = mat(fishColors[i], { roughness: 0.3, metalness: 0.15, flatShading: false });
+    // body
+    const fb = sph(0.06, bodyMat, 0, 0, 0, 8);
+    fb.scale.set(1.6, 0.8, 0.6);
+    fish.add(fb);
+    // tail
+    fish.add(box(0.06, 0.05, 0.04, bodyMat, -0.1, 0, 0));
+    // eye
+    fish.add(sph(0.015, mat(0x111111), 0.06, 0.01, 0.025, 4));
+
+    fish.position.set(
+      (Math.random() - 0.5) * (w * 0.7),
+      1.2 + Math.random() * (h * 0.6),
+      (Math.random() - 0.5) * (d * 0.4)
+    );
+    fish.rotation.y = Math.random() * Math.PI * 2;
+    fish.userData.phase = Math.random() * Math.PI * 2;
+    fish.userData.speed = 0.3 + Math.random() * 0.4;
+    fish.userData.radius = 0.3 + Math.random() * (w * 0.25);
+    fish.userData.baseY = fish.position.y;
+    fishGroup.add(fish);
+  }
+  g.add(fishGroup);
+
+  // bubbles — small transparent spheres
+  const bubbleGroup = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const bubble = sph(0.02 + Math.random() * 0.02,
+      mat(0xffffff, { transparent: true, opacity: 0.3, roughness: 0.05, metalness: 0.1, flatShading: false }),
+      (Math.random() - 0.5) * (w * 0.6),
+      1.0 + Math.random() * h,
+      (Math.random() - 0.5) * (d * 0.4), 6);
+    bubble.userData.baseX = bubble.position.x;
+    bubble.userData.phase = Math.random() * Math.PI * 2;
+    bubbleGroup.add(bubble);
+  }
+  g.add(bubbleGroup);
+
+  // tank light (blue-green glow)
+  const tankLight = new THREE.PointLight(0x4ac9e0, 3, 6, 2);
+  tankLight.position.set(0, 0.86 + h, 0);
+  g.add(tankLight);
+  g.add(box(w * 0.8, 0.04, d * 0.6, glow(0x4ac9e0, 0.8), 0, 0.86 + h - 0.02, 0));
+
+  g.userData = { fish: fishGroup, bubbles: bubbleGroup, tankLight, h, w: w, d: d, baseY: 0.86 };
+  return g;
+}
+
+/** Royal executive desk — bigger and fancier than the regular desk. */
+export function makeExecutiveDesk() {
+  const g = new THREE.Group();
+  const mahogany = mat(0x3a1608, { roughness: 0.3, metalness: 0.08, flatShading: false });
+  const leather = mat(0x1a1a1a, { roughness: 0.25, metalness: 0.05, flatShading: false });
+  const gold = GOLD();
+
+  // desktop — wider and deeper
+  g.add(box(3.0, 0.1, 1.4, mahogany, 0, 0.82, 0));
+  // leather inlay on top
+  g.add(box(2.6, 0.01, 1.0, mat(0x1a3a1a, { roughness: 0.5 }), 0, 0.88, 0));
+  // gold edge trim
+  g.add(box(3.04, 0.02, 0.02, gold, 0, 0.84, 0.71));
+  g.add(box(3.04, 0.02, 0.02, gold, 0, 0.84, -0.71));
+  g.add(box(0.02, 0.02, 1.44, gold, -1.52, 0.84, 0));
+  g.add(box(0.02, 0.02, 1.44, gold, 1.52, 0.84, 0));
+
+  // pedestal sides
+  g.add(box(0.9, 0.78, 1.3, mahogany, -0.95, 0.39, 0));
+  g.add(box(0.9, 0.78, 1.3, mahogany, 0.95, 0.39, 0));
+  // drawer handles
+  for (let i = 0; i < 3; i++) {
+    g.add(box(0.25, 0.02, 0.02, gold, -0.95, 0.22 + i * 0.22, 0.66));
+    g.add(box(0.25, 0.02, 0.02, gold, 0.95, 0.22 + i * 0.22, 0.66));
+  }
+  // modesty panel
+  g.add(box(1.0, 0.68, 0.06, mahogany, 0, 0.36, -0.67));
+
+  // desk items: globe, pen set, cigar box, nameplate
+  // globe
+  g.add(sph(0.14, mat(0x4a7a9a, { roughness: 0.4, flatShading: false }), -1.1, 1.04, -0.3, 12));
+  g.add(cyl(0.02, 0.02, 0.12, gold, -1.1, 0.94, -0.3, 6));
+  g.add(cyl(0.1, 0.12, 0.03, gold, -1.1, 0.88, -0.3, 10));
+
+  // pen set
+  g.add(box(0.3, 0.04, 0.12, mat(0x111111, { roughness: 0.2 }), 0.3, 0.9, -0.4));
+  g.add(cyl(0.01, 0.01, 0.2, gold, 0.3, 1.0, -0.4, 6).rotateZ(0.4));
+
+  // cigar box
+  g.add(box(0.3, 0.1, 0.18, mahogany, 1.1, 0.93, -0.3));
+  g.add(box(0.28, 0.01, 0.16, gold, 1.1, 0.985, -0.3));
+
+  // gold nameplate
+  g.add(box(0.5, 0.12, 0.04, gold, 0, 0.94, 0.5));
+
+  // executive chair (bigger, higher back)
+  g.add(box(0.8, 0.16, 0.8, mat(0x3a0a0a, { roughness: 0.3 }), 0, 0.52, -1.15));
+  g.add(box(0.8, 1.2, 0.14, mat(0x3a0a0a, { roughness: 0.3 }), 0, 1.15, -1.53));
+  // headrest
+  g.add(box(0.5, 0.2, 0.1, mat(0x3a0a0a, { roughness: 0.3 }), 0, 1.85, -1.53));
+  // armrests
+  for (const sx of [-0.4, 0.4]) {
+    g.add(box(0.06, 0.3, 0.55, mahogany, sx, 0.55, -1.25));
+    g.add(box(0.14, 0.04, 0.6, mahogany, sx, 0.72, -1.25));
+  }
+  // chair base
+  g.add(cyl(0.06, 0.06, 0.42, CHROME(), 0, 0.21, -1.15, 8));
+  g.add(cyl(0.35, 0.35, 0.03, CHROME(), 0, 0.015, -1.15, 12));
+  // casters
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    g.add(sph(0.04, mat(0x111111), Math.cos(a) * 0.3, 0.04, -1.15 + Math.sin(a) * 0.3, 6));
+  }
+
+  return g;
+}
+
+/** Gold rope barrier with ornate posts — fancier than velvet rope for room dividers. */
+export function makeGoldRopeDivider(len = 4) {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  for (const x of [-len / 2, len / 2]) {
+    // ornate post
+    g.add(box(0.22, 0.08, 0.22, gold, x, 0.04, 0));
+    g.add(cyl(0.04, 0.06, 1.1, gold, x, 0.6, 0, 8));
+    g.add(cyl(0.08, 0.04, 0.08, gold, x, 0.12, 0, 8));
+    g.add(cyl(0.08, 0.04, 0.08, gold, x, 1.12, 0, 8));
+    // finial
+    g.add(sph(0.06, gold, x, 1.22, 0, 8));
+    g.add(cyl(0.03, 0.06, 0.06, gold, x, 1.14, 0, 8));
+  }
+  // twin draped gold chains
+  for (const yOff of [0, -0.15]) {
+    const curve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-len / 2, 1.0 + yOff, 0),
+      new THREE.Vector3(0, 0.7 + yOff, 0),
+      new THREE.Vector3(len / 2, 1.0 + yOff, 0)
+    );
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.02, 6), gold));
+  }
+  // tassel at the center sag point
+  g.add(cyl(0.03, 0.01, 0.15, gold, 0, 0.55, 0, 6));
+  return g;
+}
+
+// ---------------------------------------------------------------------------
+// skill icon models — small diorama-style pieces for the ledger
+// ---------------------------------------------------------------------------
+
+/** Sleight of Hand — white-gloved hand fanning playing cards, gold rings */
+export function makeSkillSleight() {
+  const g = new THREE.Group();
+  const white = mat(0xf0ece0, { roughness: 0.85 });
+  const card = mat(0xf5f0e4, { roughness: 0.7 });
+  const cardBack = mat(0x8b0000, { roughness: 0.6 });
+  const gold = GOLD();
+
+  // fanned cards (5 cards in a spread)
+  for (let i = 0; i < 5; i++) {
+    const angle = (i - 2) * 0.2;
+    const c = new THREE.Group();
+    // card face
+    c.add(box(0.4, 0.005, 0.58, card, 0, 0, 0));
+    // card back pattern stripe
+    c.add(box(0.32, 0.006, 0.48, cardBack, 0, -0.004, 0));
+    // suit pip (small red or black diamond)
+    const pipColor = i % 2 === 0 ? 0xcc2222 : 0x111111;
+    const pip = box(0.06, 0.007, 0.06, mat(pipColor), 0, 0.004, 0.15);
+    pip.rotation.y = Math.PI / 4;
+    c.add(pip);
+    c.position.set(i * 0.08 - 0.16, 0.6 + i * 0.012, 0);
+    c.rotation.z = angle;
+    c.rotation.x = -0.15;
+    g.add(c);
+  }
+
+  // gloved hand (simplified palm + fingers)
+  const palm = box(0.5, 0.16, 0.4, white, 0, 0.28, 0.15);
+  palm.rotation.x = 0.3;
+  g.add(palm);
+  // thumb
+  g.add(box(0.12, 0.14, 0.2, white, -0.28, 0.38, 0.2));
+  // fingers (4 curved segments)
+  for (let i = 0; i < 4; i++) {
+    const fx = -0.15 + i * 0.1;
+    g.add(box(0.08, 0.22, 0.1, white, fx, 0.44, -0.02));
+  }
+
+  // gold rings on fingers
+  g.add(torus(0.055, 0.015, gold, -0.05, 0.42, -0.02).rotateX(Math.PI / 2));
+  g.add(torus(0.055, 0.015, gold, 0.15, 0.42, -0.02).rotateX(Math.PI / 2));
+  // diamond on pinky ring
+  const diamond = box(0.04, 0.04, 0.04, mat(0x99ddff, { roughness: 0.05, metalness: 0.4, flatShading: false }), 0.15, 0.5, -0.02);
+  diamond.rotation.y = Math.PI / 4;
+  g.add(diamond);
+
+  // ace of spades peeking from sleeve
+  const ace = box(0.35, 0.005, 0.5, card, -0.35, 0.12, -0.15);
+  ace.rotation.z = 0.3;
+  g.add(ace);
+  const spade = sph(0.04, mat(0x111111), -0.35, 0.13, -0.05, 6);
+  g.add(spade);
+
+  return g;
+}
+
+/** Sharp Memory — open vault with glowing brain and cash spilling out */
+export function makeSkillMemory() {
+  const g = new THREE.Group();
+  const steel = mat(0x2f3a45, { metalness: 0.6, roughness: 0.4, flatShading: false });
+  const gold = GOLD();
+  const cash = mat(0x3cb371, { roughness: 0.7 });
+
+  // vault body
+  g.add(box(1.0, 1.0, 0.7, steel, 0, 0.5, 0));
+  g.add(box(1.06, 0.06, 0.76, mat(0x222830, { metalness: 0.5, roughness: 0.5 }), 0, 0.03, 0));
+  // vault door (swung open)
+  const door = new THREE.Group();
+  door.add(box(0.08, 0.85, 0.6, mat(0x3f4a55, { metalness: 0.7, roughness: 0.3, flatShading: false }), 0.04, 0, 0));
+  door.add(box(0.02, 0.9, 0.64, gold, -0.01, 0, 0));
+  // wheel on door
+  door.add(cyl(0.12, 0.12, 0.06, CHROME(), 0.1, 0.1, 0, 14));
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    door.add(cyl(0.02, 0.02, 0.18, CHROME(), 0.12 + Math.cos(a) * 0.06, 0.1, Math.sin(a) * 0.06, 4).rotateZ(a + Math.PI / 2));
+  }
+  door.position.set(0.52, 0.5, 0.3);
+  door.rotation.y = -1.2;
+  g.add(door);
+
+  // brain inside (stacked pink spheres in a brain-like cluster)
+  const brain = mat(0xe898a8, { roughness: 0.6 });
+  g.add(sph(0.18, brain, 0, 0.65, 0.05, 8));
+  g.add(sph(0.15, brain, 0.12, 0.72, -0.02, 8));
+  g.add(sph(0.15, brain, -0.12, 0.72, -0.02, 8));
+  g.add(sph(0.13, brain, 0.06, 0.82, 0.02, 7));
+  g.add(sph(0.13, brain, -0.06, 0.82, 0.02, 7));
+  // brain glow
+  g.add(sph(0.22, glow(0xff88aa, 0.6, { transparent: true, opacity: 0.4 }), 0, 0.72, 0.02, 8));
+
+  // cash spilling out
+  for (let i = 0; i < 6; i++) {
+    const cx = 0.3 + Math.random() * 0.5;
+    const cz = (Math.random() - 0.5) * 0.6;
+    const bill = box(0.2, 0.01, 0.1, cash, cx, 0.06 + i * 0.015, cz);
+    bill.rotation.y = Math.random() * 1.5;
+    g.add(bill);
+  }
+  // gold coins tumbling out
+  for (let i = 0; i < 4; i++) {
+    g.add(cyl(0.06, 0.06, 0.02, gold, 0.4 + i * 0.12, 0.04, -0.15 + i * 0.08, 10));
+  }
+
+  return g;
+}
+
+/** Poker Face — top hat with cards, chips, and cigar */
+export function makeSkillPoker() {
+  const g = new THREE.Group();
+  const black = mat(0x111116, { roughness: 0.35, metalness: 0.15, flatShading: false });
+  const gold = GOLD();
+  const felt = mat(0x0f5a3a, { roughness: 0.9 });
+  const card = mat(0xf5f0e4, { roughness: 0.7 });
+
+  // felt base (mini table)
+  g.add(cyl(0.7, 0.7, 0.06, felt, 0, 0.03, 0, 16));
+  g.add(cyl(0.74, 0.74, 0.03, mat(0x2b1a10, { roughness: 0.5 }), 0, 0.005, 0, 16));
+
+  // top hat
+  g.add(cyl(0.4, 0.4, 0.08, black, 0, 0.07, 0, 16));  // brim
+  g.add(cyl(0.26, 0.28, 0.55, black, 0, 0.38, 0, 14));  // crown
+  g.add(torus(0.27, 0.025, gold, 0, 0.14, 0).rotateX(Math.PI / 2));  // gold band
+  // hat sheen highlight
+  g.add(cyl(0.2, 0.15, 0.05, mat(0x2a2a33, { metalness: 0.4, roughness: 0.1, flatShading: false }), 0, 0.62, 0, 14));
+
+  // pair of cards leaning against hat
+  const c1 = box(0.3, 0.005, 0.42, card, 0.35, 0.22, 0.1);
+  c1.rotation.z = -0.25;
+  c1.rotation.y = 0.3;
+  g.add(c1);
+  const c2 = box(0.3, 0.005, 0.42, card, 0.4, 0.23, 0.02);
+  c2.rotation.z = -0.2;
+  c2.rotation.y = 0.15;
+  g.add(c2);
+  // red heart pip on front card
+  g.add(sph(0.03, mat(0xcc2222), 0.38, 0.24, 0.18, 6));
+
+  // chip stacks beside hat
+  const chipCols = [0xff3333, 0x111111, 0x2b6bff];
+  for (let s = 0; s < 3; s++) {
+    const sx = -0.4 + s * 0.16;
+    const count = 3 + s;
+    for (let j = 0; j < count; j++) {
+      g.add(cyl(0.09, 0.09, 0.025, mat(chipCols[s], { roughness: 0.4, metalness: 0.15 }), sx, 0.07 + j * 0.028, -0.3, 10));
+    }
+  }
+
+  // smoldering cigar resting on brim
+  g.add(cyl(0.025, 0.02, 0.35, mat(0x6b4226, { roughness: 0.8 }), 0.32, 0.1, -0.15, 8).rotateZ(0.15));
+  g.add(cyl(0.015, 0.01, 0.06, mat(0x888888, { roughness: 0.9 }), 0.48, 0.12, -0.15, 6)); // ash tip
+  g.add(sph(0.02, glow(0xff5500, 2.5), 0.46, 0.12, -0.15, 6)); // ember
+
+  return g;
+}
+
+/** Silver Tongue — gold microphone with chains and money swirl */
+export function makeSkillTongue() {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  const chrome = CHROME();
+  const cash = mat(0x3cb371, { roughness: 0.7 });
+
+  // microphone stand base
+  g.add(cyl(0.35, 0.38, 0.06, mat(0x1a1a1a, { roughness: 0.3 }), 0, 0.03, 0, 14));
+
+  // microphone shaft
+  g.add(cyl(0.035, 0.035, 1.0, chrome, 0, 0.55, 0, 8));
+
+  // microphone head — gold bulb
+  g.add(sph(0.14, gold, 0, 1.12, 0, 12));
+  // mesh grille lines on mic head
+  for (let i = 0; i < 5; i++) {
+    const y = 1.04 + i * 0.04;
+    g.add(torus(0.12, 0.005, mat(0xc09020, { metalness: 0.7, roughness: 0.4 }), 0, y, 0).rotateX(Math.PI / 2));
+  }
+
+  // gold chains draped around the base
+  for (let c = 0; c < 2; c++) {
+    const startAngle = c * Math.PI;
+    for (let i = 0; i < 8; i++) {
+      const a = startAngle + (i / 8) * Math.PI;
+      const r = 0.28 + Math.sin(i * 0.8) * 0.05;
+      const y = 0.08 + Math.sin(i * 1.2) * 0.04;
+      g.add(sph(0.025, gold, Math.cos(a) * r, y, Math.sin(a) * r, 6));
+    }
+  }
+
+  // dollar bills floating/spiraling upward
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.5;
+    const r = 0.25 + i * 0.06;
+    const y = 0.4 + i * 0.18;
+    const bill = box(0.18, 0.005, 0.09, cash, Math.cos(a) * r, y, Math.sin(a) * r);
+    bill.rotation.y = a + 0.5;
+    bill.rotation.z = (Math.random() - 0.5) * 0.4;
+    g.add(bill);
+  }
+
+  // speech waves (curved arcs emanating from mic)
+  for (let i = 0; i < 3; i++) {
+    const arc = torus(0.2 + i * 0.12, 0.01, glow(0xffd700, 0.8 - i * 0.2, { transparent: true, opacity: 0.5 - i * 0.1 }), 0, 1.12, 0.2 + i * 0.08, Math.PI * 0.7);
+    arc.rotation.y = -Math.PI * 0.35;
+    arc.rotation.z = Math.PI * 0.1;
+    g.add(arc);
+  }
+
+  // gold tooth (small decorative element at base)
+  const tooth = box(0.06, 0.08, 0.04, gold, 0.2, 0.08, 0.2);
+  tooth.rotation.y = 0.5;
+  g.add(tooth);
+
+  return g;
+}
+
+/** Fast Feet — winged shoe with speed lines */
+export function makeSkillFeet() {
+  const g = new THREE.Group();
+  const leather = mat(0x8b0000, { roughness: 0.35, metalness: 0.1, flatShading: false });
+  const sole = mat(0x1a1a1a, { roughness: 0.6 });
+  const gold = GOLD();
+  const chrome = CHROME();
+
+  // sole
+  g.add(box(0.85, 0.06, 0.36, sole, 0, 0.03, 0));
+  // slight front upturn
+  g.add(box(0.15, 0.06, 0.32, sole, 0.48, 0.06, 0).rotateZ(-0.25));
+
+  // shoe body (oxford style)
+  g.add(box(0.7, 0.2, 0.34, leather, -0.03, 0.16, 0));
+  // toe cap
+  g.add(box(0.25, 0.18, 0.32, leather, 0.35, 0.14, 0));
+  const toeCurve = sph(0.17, leather, 0.46, 0.13, 0, 8);
+  toeCurve.scale.set(1, 0.7, 1.1);
+  g.add(toeCurve);
+  // heel
+  g.add(box(0.2, 0.14, 0.34, sole, -0.38, 0.1, 0));
+  // lace area
+  g.add(box(0.3, 0.04, 0.12, mat(0x111111), 0.05, 0.28, 0));
+  // gold buckle/lace accent
+  g.add(box(0.08, 0.08, 0.14, gold, 0.05, 0.3, 0));
+
+  // Hermes-style wing (right side)
+  for (let side = -1; side <= 1; side += 2) {
+    const wing = new THREE.Group();
+    // 3 feathers per wing, fanning out
+    for (let f = 0; f < 3; f++) {
+      const angle = (f - 1) * 0.35;
+      const len = 0.25 - f * 0.04;
+      const feather = box(len, 0.015, 0.08 - f * 0.01, gold, len * 0.5, 0, 0);
+      feather.rotation.z = angle;
+      feather.position.y = f * 0.03;
+      wing.add(feather);
+    }
+    wing.position.set(-0.2, 0.25, side * 0.2);
+    wing.rotation.y = side * 0.3;
+    g.add(wing);
+  }
+
+  // speed lines (trailing behind the shoe)
+  for (let i = 0; i < 4; i++) {
+    const y = 0.1 + i * 0.07;
+    const z = (i - 1.5) * 0.1;
+    g.add(box(0.4 - i * 0.06, 0.012, 0.012, glow(0xffd700, 1.2 - i * 0.25, { transparent: true, opacity: 0.7 - i * 0.15 }), -0.7 - i * 0.05, y, z));
+  }
+
+  // gold cane leaning beside the shoe
+  g.add(cyl(0.02, 0.02, 0.7, gold, 0.55, 0.35, 0.25, 6).rotateZ(-0.15));
+  g.add(sph(0.04, gold, 0.58, 0.72, 0.25, 8));
+
+  // small dust puff at the back
+  for (let i = 0; i < 3; i++) {
+    const r = 0.04 + i * 0.03;
+    g.add(sph(r, mat(0x888888, { transparent: true, opacity: 0.2 - i * 0.05 }), -0.55 - i * 0.1, 0.08, (i - 1) * 0.06, 6));
+  }
+
+  return g;
+}
+
+export function makeFlyer() {
+  const g = new THREE.Group();
+  const paper = mat(0xf0e8d8, { roughness: 0.9 });
+  g.add(box(0.6, 0.8, 0.01, paper, 0, 0.4, 0));
+  g.add(box(0.4, 0.06, 0.01, mat(0xcc2222), 0, 0.65, 0.006));
+  g.add(box(0.35, 0.04, 0.01, mat(0x333333), 0, 0.55, 0.006));
+  for (let i = 0; i < 3; i++) g.add(box(0.4, 0.025, 0.01, mat(0x888888), 0, 0.38 - i * 0.08, 0.006));
+  g.add(box(0.25, 0.12, 0.01, glow(0xffd700, 0.6), 0, 0.15, 0.006));
+  return g;
+}
+
+export function makeCardStock() {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  for (let i = 0; i < 5; i++) {
+    const card = box(0.55, 0.35, 0.008, mat(0xf5f0e0, { roughness: 0.5, metalness: 0.1 }), (i - 2) * 0.08, 0.18 + i * 0.02, i * 0.04);
+    card.rotation.z = (i - 2) * 0.08;
+    g.add(card);
+  }
+  g.add(box(0.15, 0.03, 0.008, gold, 0, 0.3, 0.2));
+  return g;
+}
+
+export function makeLemonadeCup() {
+  const g = new THREE.Group();
+  g.add(cyl(0.12, 0.09, 0.3, mat(0xf0f0f0, { roughness: 0.3 }), 0, 0.15, 0, 8));
+  g.add(cyl(0.1, 0.08, 0.25, mat(0xf0e060, { transparent: true, opacity: 0.7 }), 0, 0.14, 0, 8));
+  g.add(cyl(0.01, 0.01, 0.35, mat(0xdddd00), 0.05, 0.3, 0, 4));
+  g.add(sph(0.03, mat(0xffee00), 0, 0.08, 0, 6));
+  g.add(box(0.4, 0.25, 0.01, mat(0xffffff, { roughness: 0.9 }), 0, 0.35, 0.15));
+  g.add(box(0.25, 0.04, 0.01, mat(0xff4444), 0, 0.42, 0.151));
+  return g;
+}
+
+export function makeRadio() {
+  const g = new THREE.Group();
+  const body = mat(0x2a2a2a, { roughness: 0.4, metalness: 0.3 });
+  g.add(box(0.7, 0.45, 0.3, body, 0, 0.225, 0));
+  g.add(cyl(0.12, 0.12, 0.02, mat(0x888888, { metalness: 0.5 }), -0.15, 0.25, 0.16, 16));
+  g.add(cyl(0.06, 0.06, 0.02, mat(0x888888, { metalness: 0.5 }), 0.15, 0.15, 0.16, 12));
+  g.add(cyl(0.04, 0.04, 0.02, mat(0x888888, { metalness: 0.5 }), 0.15, 0.3, 0.16, 12));
+  g.add(cyl(0.015, 0.015, 0.4, mat(0xcccccc, { metalness: 0.6 }), 0.25, 0.55, 0, 4));
+  g.add(sph(0.025, glow(0xff3333, 0.8), -0.25, 0.43, 0.14, 6));
+  return g;
+}
+
+export function makeTestimonialBoard() {
+  const g = new THREE.Group();
+  g.add(box(0.8, 0.02, 0.02, mat(0x8b6914), 0, 0.7, 0));
+  g.add(box(0.7, 0.9, 0.02, mat(0x3a2a1a, { roughness: 0.8 }), 0, 0.35, 0));
+  for (let i = 0; i < 3; i++) {
+    g.add(box(0.2, 0.15, 0.01, mat(0xf0e8d8), -0.15, 0.6 - i * 0.25, 0.015));
+    g.add(box(0.2, 0.08, 0.01, mat(0xdddddd), 0.15, 0.6 - i * 0.25, 0.015));
+  }
+  g.add(box(0.15, 0.04, 0.01, glow(0xffd700, 0.5), 0, 0.1, 0.015));
+  return g;
+}
+
+export function makePhone() {
+  const g = new THREE.Group();
+  const body = mat(0x1a1a2a, { roughness: 0.15, metalness: 0.4 });
+  g.add(box(0.3, 0.55, 0.025, body, 0, 0.275, 0));
+  g.add(box(0.26, 0.44, 0.01, glow(0x2244aa, 0.6), 0, 0.3, 0.015));
+  for (let i = 0; i < 4; i++) g.add(box(0.2, 0.02, 0.005, mat(0x88ff88), -0.01, 0.45 - i * 0.06, 0.02));
+  g.add(sph(0.02, mat(0x222222), 0, 0.52, 0.015, 6));
+  return g;
+}
+
+export function makeChurchBulletin() {
+  const g = new THREE.Group();
+  g.add(box(0.5, 0.7, 0.015, mat(0xf5f0e8, { roughness: 0.9 }), 0, 0.35, 0));
+  g.add(box(0.08, 0.15, 0.01, mat(0xccaa33), 0, 0.6, 0.01));
+  for (let i = 0; i < 5; i++) g.add(box(0.35, 0.02, 0.005, mat(0x666666), 0, 0.42 - i * 0.06, 0.01));
+  g.add(box(0.3, 0.08, 0.005, glow(0xff3366, 0.5), 0, 0.1, 0.01));
+  return g;
+}
+
+export function makeMoneyStack() {
+  const g = new THREE.Group();
+  for (let i = 0; i < 8; i++) {
+    g.add(box(0.5, 0.02, 0.25, mat(0x3a8a3a, { roughness: 0.7 }), (Math.random() - 0.5) * 0.04, i * 0.022, (Math.random() - 0.5) * 0.03));
+  }
+  g.add(box(0.08, 0.02, 0.3, mat(0xf0e8d0), 0, 0.09, 0));
+  return g;
+}
+
+export function makePeanutBowl() {
+  const g = new THREE.Group();
+  g.add(cyl(0.25, 0.18, 0.12, mat(0x8b4513, { roughness: 0.6 }), 0, 0.06, 0, 10));
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const r = 0.1 + Math.random() * 0.08;
+    g.add(sph(0.035, mat(0xd4a860, { roughness: 0.8 }), Math.cos(a) * r, 0.12 + Math.random() * 0.03, Math.sin(a) * r, 5));
+  }
+  return g;
+}
+
+export function makeBadge() {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  g.add(cyl(0.01, 0.01, 0.3, gold, 0, 0.4, 0, 4));
+  const star = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    star.add(box(0.06, 0.25, 0.02, gold, Math.cos(a) * 0.05, Math.sin(a) * 0.05 + 0.25, 0).rotateZ(a + Math.PI / 2));
+  }
+  g.add(star);
+  g.add(cyl(0.12, 0.12, 0.03, gold, 0, 0.25, 0, 6));
+  return g;
+}
+
+export function makeHopper() {
+  const g = new THREE.Group();
+  const metal = mat(0x888888, { roughness: 0.3, metalness: 0.6 });
+  g.add(box(0.5, 0.35, 0.35, metal, 0, 0.175, 0));
+  g.add(box(0.45, 0.05, 0.3, mat(0x222222), 0, 0.35, 0));
+  g.add(box(0.12, 0.12, 0.02, glow(0x44ff44, 0.6), 0.12, 0.25, 0.18));
+  for (let i = 0; i < 5; i++) {
+    g.add(cyl(0.08, 0.08, 0.02, mat(0xffd700, { metalness: 0.4 }), -0.12 + i * 0.06, 0.38, (Math.random() - 0.5) * 0.1, 8));
+  }
+  return g;
+}
+
+export function makeGasMask() {
+  const g = new THREE.Group();
+  g.add(sph(0.25, mat(0x3a5a3a, { roughness: 0.5 }), 0, 0.3, 0, 10));
+  g.add(cyl(0.08, 0.06, 0.15, mat(0x2a2a2a, { roughness: 0.4 }), 0, 0.25, 0.25, 8));
+  g.add(cyl(0.06, 0.08, 0.12, mat(0x2a2a2a), -0.12, 0.2, 0.22, 8));
+  g.add(cyl(0.06, 0.06, 0.04, mat(0x888888, { metalness: 0.5 }), 0, 0.25, 0.39, 8));
+  for (const x of [-0.1, 0.1]) g.add(cyl(0.06, 0.06, 0.02, mat(0x446688, { transparent: true, opacity: 0.7 }), x, 0.35, 0.22, 10));
+  return g;
+}
+
+export function makeHotelKey() {
+  const g = new THREE.Group();
+  g.add(box(0.4, 0.25, 0.015, mat(0xf0e8d0, { roughness: 0.4, metalness: 0.1 }), 0, 0.125, 0));
+  g.add(box(0.1, 0.15, 0.02, glow(0xffd700, 0.4), 0.1, 0.1, 0.01));
+  g.add(box(0.25, 0.03, 0.01, mat(0x222222), -0.05, 0.18, 0.01));
+  g.add(cyl(0.03, 0.03, 0.015, mat(0xff3333), -0.12, 0.1, 0.01, 6));
+  return g;
+}
+
+export function makeVaultDoor() {
+  const g = new THREE.Group();
+  const steel = mat(0x808080, { roughness: 0.2, metalness: 0.7 });
+  g.add(box(0.8, 0.9, 0.1, steel, 0, 0.45, 0));
+  g.add(cyl(0.25, 0.25, 0.05, mat(0x606060, { metalness: 0.8 }), 0, 0.45, 0.08, 16));
+  g.add(box(0.04, 0.35, 0.06, mat(0x555555, { metalness: 0.6 }), 0, 0.45, 0.08));
+  g.add(box(0.35, 0.04, 0.06, mat(0x555555, { metalness: 0.6 }), 0, 0.45, 0.08));
+  g.add(cyl(0.04, 0.04, 0.08, GOLD(), 0.3, 0.45, 0.06, 8));
+  for (let i = 0; i < 3; i++) g.add(cyl(0.015, 0.015, 0.13, steel, -0.42, 0.2 + i * 0.25, 0, 4));
+  return g;
+}
+
+export function makeSportsbook() {
+  const g = new THREE.Group();
+  g.add(box(0.9, 0.55, 0.04, mat(0x111111, { roughness: 0.2 }), 0, 0.4, 0));
+  g.add(box(0.85, 0.5, 0.02, glow(0x001a33, 0.4), 0, 0.4, 0.02));
+  for (let i = 0; i < 4; i++) {
+    const y = 0.55 - i * 0.1;
+    g.add(box(0.3, 0.02, 0.01, mat(0x88ff88), -0.2, y, 0.03));
+    g.add(box(0.15, 0.02, 0.01, mat(i === 1 ? 0xff4444 : 0xffd700), 0.25, y, 0.03));
+  }
+  g.add(box(0.5, 0.04, 0.01, glow(0xff3366, 0.6), 0, 0.2, 0.03));
+  return g;
+}
+
+export function makeSlotChip() {
+  const g = new THREE.Group();
+  const gold = GOLD();
+  g.add(cyl(0.3, 0.3, 0.04, mat(0x880000, { roughness: 0.3 }), 0, 0.02, 0, 20));
+  g.add(cyl(0.22, 0.22, 0.045, mat(0xaa0000, { roughness: 0.4 }), 0, 0.02, 0, 20));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    g.add(box(0.03, 0.05, 0.06, gold, Math.cos(a) * 0.26, 0.02, Math.sin(a) * 0.26).rotateY(a));
+  }
+  g.add(cyl(0.08, 0.08, 0.05, gold, 0, 0.02, 0, 8));
+  return g;
+}
+
+export function makeFilmReel() {
+  const g = new THREE.Group();
+  const dark = mat(0x1a1a1a, { roughness: 0.4 });
+  g.add(cyl(0.3, 0.3, 0.04, dark, 0, 0.3, 0, 20));
+  g.add(cyl(0.08, 0.08, 0.05, dark, 0, 0.3, 0, 12));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    g.add(cyl(0.04, 0.04, 0.05, dark, Math.cos(a) * 0.18, 0.3 + Math.sin(a) * 0.18, 0, 6));
+  }
+  g.add(box(0.5, 0.02, 0.03, mat(0x3a2a1a, { transparent: true, opacity: 0.8 }), 0.1, 0.05, 0));
+  return g;
+}
+
+export function makeTVScreen() {
+  const g = new THREE.Group();
+  g.add(box(1.0, 0.6, 0.04, mat(0x111111, { roughness: 0.15 }), 0, 0.4, 0));
+  g.add(box(0.92, 0.52, 0.02, glow(0x1a2a4a, 0.5), 0, 0.4, 0.025));
+  g.add(box(0.6, 0.08, 0.01, glow(0xffd700, 0.6), 0, 0.5, 0.04));
+  g.add(box(0.4, 0.04, 0.01, mat(0xffffff), 0, 0.35, 0.04));
+  g.add(box(0.15, 0.15, 0.04, mat(0x222222), 0, 0.05, -0.02));
+  g.add(cyl(0.02, 0.04, 0.12, mat(0x333333), 0, 0.11, 0, 6));
+  return g;
+}
+
+export function makeExitSign() {
+  const g = new THREE.Group();
+  g.add(box(0.5, 0.2, 0.03, mat(0x115511, { roughness: 0.5 }), 0, 0.5, 0));
+  g.add(box(0.45, 0.15, 0.01, glow(0x33ff33, 0.8), 0, 0.5, 0.02));
+  g.add(cyl(0.015, 0.015, 0.2, mat(0x888888, { metalness: 0.5 }), 0, 0.62, 0, 4));
+  return g;
+}
+
+export function makeTrainCart() {
+  const g = new THREE.Group();
+  const metal = mat(0x888888, { roughness: 0.3, metalness: 0.5 });
+  g.add(box(0.8, 0.25, 0.3, metal, 0, 0.2, 0));
+  g.add(box(0.7, 0.15, 0.25, mat(0xffd700, { metalness: 0.3 }), 0, 0.32, 0));
+  for (const x of [-0.25, 0.25]) {
+    for (const z of [-0.18, 0.18]) {
+      g.add(cyl(0.05, 0.05, 0.02, mat(0x333333), x, 0.05, z, 8));
+    }
+  }
+  g.add(box(0.84, 0.02, 0.04, mat(0x555555, { metalness: 0.4 }), 0, 0.01, 0));
+  return g;
+}
+
+export function makeSlotWrench() {
+  const g = new THREE.Group();
+  const metal = mat(0x888888, { roughness: 0.3, metalness: 0.6 });
+  g.add(box(0.06, 0.5, 0.02, metal, 0, 0.35, 0));
+  g.add(box(0.18, 0.12, 0.02, metal, 0, 0.6, 0));
+  g.add(box(0.08, 0.12, 0.02, mat(0x000000, { roughness: 1 }), 0.05, 0.6, 0));
+  g.add(cyl(0.04, 0.04, 0.03, mat(0x333333, { roughness: 0.6 }), 0, 0.08, 0, 8));
+  return g;
+}
+
+export function makeMegaphone() {
+  const g = new THREE.Group();
+  const body = mat(0xcc2222, { roughness: 0.4 });
+  g.add(cyl(0.04, 0.2, 0.5, body, 0, 0.35, 0, 10).rotateZ(0.3));
+  g.add(box(0.12, 0.04, 0.04, mat(0x333333), -0.12, 0.15, 0));
   return g;
 }

@@ -1,6 +1,10 @@
-import { STAT_META, CASINO_STAT_KEYS, PLAYER_STAT_KEYS, CASINOS } from '../state.js';
+import * as THREE from 'three';
+import { STAT_META, CASINO_STAT_KEYS, PLAYER_STAT_KEYS, ACHIEVEMENTS } from '../state.js';
 import { fmtMoney } from '../minigames/base.js';
 import { ICONS, icon } from './icons.js';
+import { makeOwner } from '../world/people.js';
+import * as M from '../world/models.js';
+import * as T from '../engine/textures.js';
 
 const $ = id => document.getElementById(id);
 
@@ -24,7 +28,16 @@ export function quip(msg, ms = 5000) {
   bubbleTimer = setTimeout(() => b.classList.add('hidden'), ms);
 }
 
-const STAT_ICON = { machines: 'machine', tables: 'cards', trafficPerMin: 'walk', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
+export const STAT_ICON = { capacity: 'people', machines: 'machine', tables: 'cards', trafficPerMin: 'walk', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
+
+const MILESTONES = [
+  { key: 'balance', label: 'Balance', icon: 'dollar', get: s => s.money, achIds: ['hoard_50k'], fmt: fmtMoney },
+  { key: 'earned', label: 'Lifetime Take', icon: 'dollar', get: s => s.lifetimeEarned, achIds: ['earn_1k', 'earn_5k', 'earn_25k', 'earn_100k', 'earn_500k'], fmt: fmtMoney },
+  { key: 'guests', label: 'Guests Served', icon: 'people', get: s => s.lifetimeCustomers, achIds: ['guests_10', 'guests_50', 'guests_200', 'guests_1000'], fmt: v => v.toLocaleString() },
+  { key: 'time', label: 'Time on Floor', icon: 'clock', get: s => s.playTime, achIds: ['time_10', 'time_30', 'time_60'], fmt: v => { const m = Math.floor(v / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; } },
+];
+
+const ITEM_NAMES = { toilet: 'Gold Toilet', selfstatue: 'Your Statue', namelights: 'Name in Lights', tiger: 'Pet Tiger', fountain: 'Champagne Fountain' };
 
 export class HUD {
   constructor(game, customers) {
@@ -32,97 +45,354 @@ export class HUD {
     this.el = $('hud');
     this.statsPanel = $('stats-panel');
     this.acc = 0;
+    this.achAcc = 0;
     this.shownMoney = game.s.money;
-    // inject icons
+    this._modelT = 0;
     const put = (id, name) => { const e = $(id); if (e) e.innerHTML = ICONS[name]; };
     put('ico-hopper', 'vault'); put('ico-guests', 'people'); put('ico-heat', 'flame');
     put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help'); put('ico-settings', 'gear'); put('ico-settings-music', 'music');
-    put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger');
+    put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger'); put('ico-hot-arrange', 'gear');
     document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = ICONS[e.dataset.ico]; });
+    this._initModelPreview();
+    this._initCasinoPreview();
     this.drawPortrait();
+    this.buildCasinoModel();
+    this.renderMilestones();
     game.on('skill', () => this.drawPortrait());
-    game.on('money', ({ amount }) => { if (amount > 0) { const m = $('hud-money'); m.classList.remove('bump'); void m.offsetWidth; m.classList.add('bump'); } });
+    game.on('casino', () => this.buildCasinoModel());
+    game.on('money', () => this.renderMilestones());
+    game.on('achievement', (a) => {
+      toast(`Achievement: ${a.name}${a.reward ? ` (+${fmtMoney(a.reward)})` : ''}`, 'good', 5000);
+      quip(a.hint);
+    });
   }
   show() { this.el.classList.remove('hidden'); }
 
-  /** Victor's portrait: painted straight onto the HUD canvas. */
+
+  renderMilestones() {
+    const el = $('pp-milestones'); if (!el) return;
+    const s = this.game.s;
+    const unlocked = s.achievements;
+
+    const rows = MILESTONES.map(m => {
+      const cur = m.key === 'balance' ? this.shownMoney : m.get(s);
+      const nextAch = m.achIds.map(id => ACHIEVEMENTS.find(a => a.id === id)).find(a => a && !unlocked.includes(a.id));
+      const valText = m.fmt(cur);
+      return { m, cur, nextAch, valText };
+    });
+
+    el.innerHTML = rows.map(r => {
+      return `<div class="sb-stat-row${r.nextAch ? ' has-tip' : ''}" data-ms="${r.m.key}">` +
+        `<span class="ico-slot">${ICONS[r.m.icon] || ICONS.star}</span>` +
+        `<span class="sb-stat-label">${r.m.label}</span>` +
+        `<span class="sb-stat-val">${r.valText}</span></div>`;
+    }).join('');
+
+    el.querySelectorAll('.sb-stat-row.has-tip').forEach(row => {
+      const key = row.dataset.ms;
+      const r = rows.find(x => x.m.key === key);
+      if (!r || !r.nextAch) return;
+      row.onmouseenter = () => {
+        let tip = row.querySelector('.pp-tip');
+        if (tip) return;
+        tip = document.createElement('div');
+        tip.className = 'pp-tip';
+        const a = r.nextAch;
+        const rewards = [];
+        if (a.reward) rewards.push(`<span class="pp-tip-cash">+${fmtMoney(a.reward)}</span>`);
+        if (a.item) rewards.push(`<span class="pp-tip-item">${icon('star')}${ITEM_NAMES[a.item] || a.item}</span>`);
+        tip.innerHTML = `<div class="pp-tip-name">${a.name}</div>` +
+          `<div class="pp-tip-hint">${a.hint}</div>` +
+          (rewards.length ? `<div class="pp-tip-rewards">${rewards.join('')}</div>` : '');
+        row.appendChild(tip);
+      };
+      row.onmouseleave = () => {
+        const tip = row.querySelector('.pp-tip');
+        if (tip) tip.remove();
+      };
+    });
+  }
+
+  /** Set up the mini Three.js scene that renders the owner model. */
+  _initModelPreview() {
+    const c = $('player-model'); if (!c) return;
+    this._pvCanvas = c;
+    this._pvRenderer = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true });
+    this._pvRenderer.setSize(c.width, c.height);
+    this._pvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this._pvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this._pvRenderer.toneMappingExposure = 1.0;
+
+    this._pvScene = new THREE.Scene();
+    this._pvCam = new THREE.PerspectiveCamera(28, c.width / c.height, 0.1, 50);
+    this._pvCam.position.set(0, 1.45, 4.6);
+    this._pvCam.lookAt(0, 1.05, 0);
+
+    this._pvScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffd080, 2.0);
+    key.position.set(2, 3, 3);
+    this._pvScene.add(key);
+    const rim = new THREE.DirectionalLight(0xff2e88, 0.6);
+    rim.position.set(-2, 1, -2);
+    this._pvScene.add(rim);
+    const fill = new THREE.DirectionalLight(0x38e8ff, 0.3);
+    fill.position.set(-1, 2, 1);
+    this._pvScene.add(fill);
+
+    this._pvModel = null;
+    this._pvRaycaster = new THREE.Raycaster();
+    this._pvReactions = [];
+
+    c.addEventListener('click', (e) => this._onPlayerClick(e));
+    c.style.cursor = 'pointer';
+  }
+
+  _onPlayerClick(e) {
+    if (!this._pvModel || !this._pvCanvas) return;
+    const rect = this._pvCanvas.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this._pvRaycaster.setFromCamera(mouse, this._pvCam);
+    const hits = this._pvRaycaster.intersectObjects(this._pvModel.children, true);
+    if (!hits.length) return;
+
+    const u = this._pvModel.userData;
+    const parts = { head: u.head, armL: u.armL, armR: u.armR, legL: u.legL, legR: u.legR, body: u.body };
+    let hitPart = null;
+    for (const hit of hits) {
+      let obj = hit.object;
+      while (obj && obj !== this._pvModel) {
+        for (const [name, ref] of Object.entries(parts)) {
+          if (ref && obj === ref) { hitPart = name; break; }
+        }
+        if (hitPart) break;
+        obj = obj.parent;
+      }
+      if (hitPart) break;
+    }
+    if (!hitPart) hitPart = 'body';
+
+    const QUIPS = ["Hey!", "Stop.", "Ow.", "Quit it.", "No.", "What?", "Hm?", "Easy.", "Rude.", "Why?"];
+    const msgs = QUIPS;
+    quip(msgs[Math.floor(Math.random() * msgs.length)], 3000);
+
+    this._pvReactions.push({ part: hitPart, t: 0, duration: 0.5 });
+  }
+
+  _applyReactions(dt) {
+    if (!this._pvModel) return;
+    const u = this._pvModel.userData;
+    for (let i = this._pvReactions.length - 1; i >= 0; i--) {
+      const r = this._pvReactions[i];
+      r.t += dt;
+      const p = Math.min(r.t / r.duration, 1);
+      const wave = Math.sin(p * Math.PI * 4) * (1 - p);
+      const part = u[r.part === 'body' ? 'body' : r.part];
+      if (!part) { this._pvReactions.splice(i, 1); continue; }
+
+      switch (r.part) {
+        case 'head':
+          part.rotation.z = wave * 0.4;
+          part.rotation.x = wave * 0.15;
+          break;
+        case 'armL':
+          part.rotation.x = wave * -1.2;
+          part.rotation.z = wave * 0.3;
+          break;
+        case 'armR':
+          part.rotation.x = wave * -1.2;
+          part.rotation.z = wave * -0.3;
+          break;
+        case 'legL':
+          part.rotation.x = wave * 0.8;
+          break;
+        case 'legR':
+          part.rotation.x = wave * 0.8;
+          break;
+        case 'body': {
+          const leg = u.legR || u.legL;
+          if (leg) leg.rotation.x = wave * -1.0;
+          break;
+        }
+      }
+
+      if (p >= 1) {
+        part.rotation.x = 0; part.rotation.z = 0;
+        this._pvReactions.splice(i, 1);
+      }
+    }
+  }
+
+  /** Set up the mini Three.js scene for the casino building preview. */
+  _initCasinoPreview() {
+    const c = $('casino-model'); if (!c) return;
+    this._cvCanvas = c;
+    this._cvRenderer = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true });
+    this._cvRenderer.setSize(c.width, c.height);
+    this._cvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this._cvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this._cvRenderer.toneMappingExposure = 1.2;
+
+    this._cvScene = new THREE.Scene();
+    this._cvCam = new THREE.PerspectiveCamera(30, c.width / c.height, 0.1, 100);
+    this._cvCam.position.set(0, 4, 15);
+    this._cvCam.lookAt(0, 2.0, 0);
+
+    this._cvScene.add(new THREE.AmbientLight(0xc0b8d0, 0.8));
+    const key = new THREE.DirectionalLight(0xffe8c0, 2.0);
+    key.position.set(0, 6, 8); this._cvScene.add(key);
+    const warm = new THREE.PointLight(0xffc840, 12, 20, 1.5);
+    warm.position.set(0, 3, 6); this._cvScene.add(warm);
+    const neon = new THREE.PointLight(0xff2e88, 5, 16, 1.5);
+    neon.position.set(-3, 4, 4); this._cvScene.add(neon);
+    const fill = new THREE.PointLight(0x4060ff, 3, 16, 1.5);
+    fill.position.set(3, 3, 4); this._cvScene.add(fill);
+
+    this._cvModel = null;
+    this._cvT = 0;
+  }
+
+  /** Build a small iconic building model for the current casino tier. */
+  buildCasinoModel() {
+    if (!this._cvScene) return;
+    if (this._cvModel) { this._cvScene.remove(this._cvModel); this._cvModel = null; }
+
+    const def = this.game.casinoDef;
+    const tier = def.id === 'duck' ? 0 : def.id === 'rat' ? 1 : 2;
+    const g = new THREE.Group();
+
+    const brickTex = T.brickTexture(
+      tier === 2 ? '#c8c0b8' : tier === 1 ? '#2a2a34' : '#3b2418',
+      tier === 2 ? '#a8a098' : tier === 1 ? '#15151c' : '#1a0e08'
+    );
+    const wallMat = M.texMat(brickTex, { roughness: 0.9 });
+    const gold = M.GOLD();
+
+    const bw = tier === 2 ? 8 : tier === 1 ? 6 : 4.5;
+    const bh = tier === 2 ? 7 : tier === 1 ? 5 : 3.5;
+    const bd = tier === 2 ? 5 : tier === 1 ? 4 : 3;
+
+    g.add(M.box(bw, bh, bd, wallMat, 0, bh / 2, 0));
+    g.add(M.box(bw + 0.1, 0.15, bd + 0.1, gold, 0, bh + 0.08, 0));
+
+    const doorW = tier === 2 ? 1.6 : 1.0;
+    const doorH = tier === 2 ? 2.8 : 2.0;
+    g.add(M.box(doorW, doorH, 0.15, M.mat(0x1a0a06, { roughness: 0.3 }), 0, doorH / 2, bd / 2 + 0.05));
+    g.add(M.box(doorW + 0.3, 0.1, 0.2, gold, 0, doorH + 0.1, bd / 2 + 0.05));
+
+    if (tier > 0) {
+      for (let i = 0; i < (tier === 2 ? 3 : 2); i++) {
+        const wx = -bw / 2 + 1.2 + i * (bw - 2.4) / (tier === 2 ? 2 : 1);
+        const wy = bh * 0.55;
+        g.add(M.box(0.7, 0.9, 0.08, M.glow(0x3a5a8a, 0.5, { transparent: true, opacity: 0.8 }), wx, wy, bd / 2 + 0.08));
+      }
+    }
+
+    const signColor = '#' + def.signColor.toString(16).padStart(6, '0');
+    const shortName = this.game.casinoDisplayName().replace(', Las Vegas', '').toUpperCase();
+    const sign = M.makeNeonSign(shortName.length > 12 ? shortName.slice(0, 12) : shortName, signColor, Math.min(bw - 0.5, 5), { intensity: 15 });
+    sign.position.set(0, bh + 1, bd / 2 + 0.2);
+    g.add(sign);
+
+    if (tier >= 1) {
+      const awning = M.box(doorW + 1, 0.12, 1.0, M.mat(0x8b0000, { roughness: 0.5 }), 0, doorH + 0.3, bd / 2 + 0.5);
+      g.add(awning);
+    }
+    if (tier === 2) {
+      for (const cx of [-bw / 2 + 0.4, bw / 2 - 0.4]) {
+        g.add(M.cyl(0.15, 0.15, bh, M.mat(0xe0d8c8, { roughness: 0.3, metalness: 0.1 }), cx, bh / 2, bd / 2 + 0.2, 8));
+      }
+    }
+
+    const ground = M.box(bw + 4, 0.06, bd + 4, M.mat(0x0b0b10, { roughness: 0.15, metalness: 0.1 }), 0, -0.03, 0);
+    g.add(ground);
+    const sidewalk = M.box(bw + 2, 0.08, 1.5, M.mat(0x2e2e34, { roughness: 0.85 }), 0, 0.01, bd / 2 + 1.5);
+    g.add(sidewalk);
+
+    g.position.set(0, 0, 0);
+    this._cvScene.add(g);
+    this._cvModel = g;
+    this._cvNeonSign = sign;
+  }
+
+  /** Render one frame of the casino preview. */
+  _renderCasinoPreview(dt) {
+    if (!this._cvRenderer || !this._cvModel) return;
+    this._cvT += dt;
+    this._cvModel.rotation.y = Math.sin(this._cvT * 0.15) * 0.15;
+    this._cvRenderer.render(this._cvScene, this._cvCam);
+  }
+
+  /** Rebuild the 3D owner model and title text. */
   drawPortrait() {
-    const c = $('portrait'); if (!c) return;
-    const ctx = c.getContext('2d'); const sk = this.game.s.skills;
-    const W = c.width, H = c.height;
-    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2a1240'); g.addColorStop(1, '#0a0610');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    // spotlight
-    const r = ctx.createRadialGradient(W / 2, 40, 10, W / 2, 60, 110); r.addColorStop(0, 'rgba(255,200,120,0.25)'); r.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = r; ctx.fillRect(0, 0, W, H);
-    // shoulders / suit
-    ctx.fillStyle = sk.tongue >= 5 ? '#5a0a2a' : '#1c1030'; ctx.beginPath(); ctx.moveTo(10, H); ctx.quadraticCurveTo(20, 100, 60, 96); ctx.lineTo(100, 96); ctx.quadraticCurveTo(140, 100, 150, H); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1; for (let x = 16; x < W; x += 9) { ctx.beginPath(); ctx.moveTo(x, 100); ctx.lineTo(x - 4, H); ctx.stroke(); }
-    ctx.fillStyle = '#f5f5f5'; ctx.beginPath(); ctx.moveTo(66, 96); ctx.lineTo(80, 128); ctx.lineTo(94, 96); ctx.fill();
-    ctx.fillStyle = '#9b0000'; ctx.beginPath(); ctx.moveTo(76, 100); ctx.lineTo(80, 132); ctx.lineTo(84, 100); ctx.fill();
-    if (sk.tongue >= 2) { ctx.strokeStyle = '#f5c542'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(80, 96, 20, 0.3, Math.PI - 0.3); ctx.stroke(); }
-    if (sk.tongue >= 4) { ctx.fillStyle = '#f0e2c8'; ctx.fillRect(10, 96, 50, 16); ctx.fillRect(100, 96, 50, 16); }
-    // neck + head
-    ctx.fillStyle = '#e0ac69'; ctx.fillRect(70, 84, 20, 16);
-    ctx.fillStyle = '#e0ac69'; ctx.beginPath(); ctx.roundRect(48, 30, 64, 66, 10); ctx.fill();
-    // hair with widow's peak
-    ctx.fillStyle = '#0d0d0d'; ctx.beginPath(); ctx.moveTo(46, 44); ctx.quadraticCurveTo(48, 22, 80, 24); ctx.quadraticCurveTo(112, 22, 114, 44); ctx.lineTo(114, 38); ctx.lineTo(46, 38); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(66, 30); ctx.lineTo(80, 42); ctx.lineTo(94, 30); ctx.fill();
-    ctx.fillRect(46, 40, 6, 22); ctx.fillRect(108, 40, 6, 22);
-    // brows (angry), eyes, nose, sneer, gold tooth
-    ctx.strokeStyle = '#2a1a0a'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(56, 50); ctx.lineTo(72, 56); ctx.stroke(); ctx.beginPath(); ctx.moveTo(104, 50); ctx.lineTo(88, 56); ctx.stroke();
-    if (sk.poker >= 2) { ctx.fillStyle = '#050505'; ctx.fillRect(54, 56, 22, 12); ctx.fillRect(84, 56, 22, 12); ctx.fillRect(76, 60, 8, 3); }
-    else { for (const ex of [65, 95]) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(ex, 62, 8, 5, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(ex, 63, 3.2, 0, 7); ctx.fill(); } }
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(80, 64); ctx.lineTo(76, 76); ctx.lineTo(83, 78); ctx.stroke();
-    ctx.strokeStyle = '#4a1a1a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(66, 88); ctx.quadraticCurveTo(80, 82, 96, 85); ctx.stroke();
-    ctx.fillStyle = '#f5c542'; ctx.fillRect(86, 84, 5, 4);
-    // cigarette / cigar
-    if (sk.poker >= 3) { ctx.fillStyle = '#5a2a0a'; ctx.fillRect(94, 84, 26, 6); ctx.fillStyle = '#ff5500'; ctx.fillRect(118, 84, 4, 6); }
-    else { ctx.fillStyle = '#fff'; ctx.fillRect(94, 86, 22, 3); ctx.fillStyle = '#ff5500'; ctx.fillRect(114, 86, 3, 3); }
-    // hat
-    if (sk.poker >= 4) { ctx.fillStyle = sk.poker >= 5 ? '#f5c542' : '#0a0a0a'; ctx.fillRect(40, 26, 80, 6); ctx.fillRect(52, 0, 56, 28); ctx.fillStyle = '#8b0000'; ctx.fillRect(52, 20, 56, 5); }
-    else if (sk.poker >= 1) { ctx.fillStyle = 'rgba(0,200,120,0.7)'; ctx.fillRect(46, 34, 68, 7); }
-    // vignette
-    const v = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, 110); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.6)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+    if (!this._pvScene) return;
+    if (this._pvModel) { this._pvScene.remove(this._pvModel); this._pvModel = null; }
+    const sk = this.game.s.skills;
+    this._pvModel = makeOwner(sk);
+    this._pvModel.position.set(0, 0, 0);
+    this._pvModel.rotation.y = 0.3;
+    this._pvScene.add(this._pvModel);
     const total = Object.values(sk).reduce((a, b) => a + b, 0);
-    $('portrait-title').textContent = total >= 20 ? 'Kingpin' : total >= 12 ? 'Racketeer' : total >= 6 ? 'Operator' : total >= 2 ? 'Hustler' : 'Proprietor';
+    $('portrait-title').textContent = total >= 20 ? 'KINGPIN' : total >= 12 ? 'RACKETEER' : total >= 6 ? 'OPERATOR' : total >= 2 ? 'HUSTLER' : 'PROPRIETOR';
+  }
+
+  /** Render one frame of the model preview (called from the main loop). */
+  _renderPreview(dt) {
+    if (!this._pvRenderer || !this._pvModel) return;
+    this._modelT += dt;
+    this._pvModel.rotation.y = 0.3 + Math.sin(this._modelT * 0.5) * 0.15;
+    const u = this._pvModel.userData;
+    if (u && u.head) u.head.rotation.y = Math.sin(this._modelT * 0.7) * 0.2;
+    this._applyReactions(dt);
+    this._pvRenderer.render(this._pvScene, this._pvCam);
   }
 
   update(dt) {
-    // smooth money counter every frame
+    this._renderPreview(dt);
+    this._renderCasinoPreview(dt);
     const target = this.game.s.money;
-    if (Math.abs(target - this.shownMoney) > 0.5) { this.shownMoney += (target - this.shownMoney) * Math.min(1, dt * 6); if (Math.abs(target - this.shownMoney) < 1) this.shownMoney = target; $('hud-money').textContent = fmtMoney(this.shownMoney); }
+    if (Math.abs(target - this.shownMoney) > 0.5) {
+      this.shownMoney += (target - this.shownMoney) * Math.min(1, dt * 6);
+      if (Math.abs(target - this.shownMoney) < 1) this.shownMoney = target;
+      const balEl = $('pp-milestones')?.querySelector('[data-ms="balance"] .sb-stat-val');
+      if (balEl) balEl.textContent = fmtMoney(this.shownMoney);
+    }
     this.acc += dt;
     if (this.acc < 0.15) return;
     this.acc = 0;
     const g = this.game, st = g.stats;
     $('hud-casino').textContent = g.casinoDisplayName().replace(', Las Vegas', '');
-    $('hud-casino-index').textContent = `CASINO ${g.s.casino + 1} OF 3${g.s.casino === 2 ? ' · LAS VEGAS' : ''}`;
-    $('hud-emblem').textContent = ['LD', 'GR', 'PD'][g.s.casino];
     const cap = st.hopperCap * (st.machines + st.tables);
     const full = this.customers.world.machines.filter(m => m.cash >= st.hopperCap - 0.5).length;
-    $('hud-hopper').textContent = `${fmtMoney(g.s.machineCash)}${full ? ` · ${full} FULL` : ''}`;
-    const hb = $('hud-hopper-bar'); hb.style.width = `${Math.min(100, g.s.machineCash / cap * 100)}%`; hb.classList.toggle('full', full > 0);
+    const hv = $('hud-hopper');
+    hv.textContent = full ? `${fmtMoney(g.s.machineCash)} · ${full} FULL` : fmtMoney(g.s.machineCash);
+    hv.className = `sb-stat-val${full ? ' full-blink' : g.s.machineCash / cap > 0.7 ? ' warn' : ''}`;
     const totalSeats = this.customers.world.machines.length + this.customers.world.tables.reduce((a, t) => a + t.seats.length, 0);
     $('hud-guests').textContent = `${this.customers.count} / ${totalSeats}${this.customers.pending ? ` (+${this.customers.pending})` : ''}`;
-    $('hud-guests-bar').style.width = `${totalSeats ? Math.min(100, this.customers.count / totalSeats * 100) : 0}%`;
     const types = { whale: 0, sharp: 0, drunk: 0 };
     for (const c of this.customers.customers) if (types[c.type] !== undefined) types[c.type]++;
-    $('hud-types').innerHTML = `${types.whale ? icon('whale') + types.whale : ''}${types.drunk ? icon('beer') + types.drunk : ''}${types.sharp ? icon('shades') + types.sharp : ''}`;
-    $('hud-heat').textContent = `${Math.round(st.heat)}%`;
-    $('hud-heat-bar').style.width = `${st.heat}%`;
-    // goal tracker
-    const next = CASINOS.findIndex((c, i) => !g.s.ownedCasinos.includes(i));
-    const goal = $('hud-goal');
-    if (next === -1) { $('goal-label').innerHTML = `<span>VEGAS ACHIEVED</span><span>${icon('crown')}</span>`; $('goal-fill').style.width = '100%'; $('goal-nums').textContent = `Lifetime take ${fmtMoney(g.s.lifetimeEarned)}`; }
-    else { const c = CASINOS[next]; $('goal-label').innerHTML = `<span>NEXT: ${g.casinoDisplayName(next).replace(', Las Vegas', '').toUpperCase()}</span><span>${Math.min(100, Math.floor(g.s.money / c.price * 100))}%</span>`; $('goal-fill').style.width = `${Math.min(100, g.s.money / c.price * 100)}%`; $('goal-nums').textContent = `${fmtMoney(g.s.money)} / ${fmtMoney(c.price)}`; }
+    $('hud-whale-count').textContent = types.whale;
+    $('hud-drunk-count').textContent = types.drunk;
+    $('hud-sharp-count').textContent = types.sharp;
+    const heatEl = $('hud-heat');
+    heatEl.textContent = `${Math.round(st.heat)}%`;
+    heatEl.className = `sb-stat-val${st.heat > 60 ? ' danger' : st.heat > 30 ? ' warn' : ''}`;
     if (!this.statsPanel.classList.contains('hidden')) this.renderStats();
+    this.achAcc += 0.15;
+    if (this.achAcc >= 2) {
+      this.achAcc = 0;
+      this.renderMilestones();
+      const newly = this.game.checkAchievements();
+      for (const a of newly) this.game.claimAchievement(a.id);
+    }
   }
 
   setPrompt(text, zoneKey) {
     const p = $('hud-prompt');
     if (!text) p.classList.add('hidden'); else { p.classList.remove('hidden'); $('hud-prompt-text').textContent = text; }
-    document.querySelectorAll('.hot').forEach(h => h.classList.toggle('near', h.dataset.key === zoneKey));
+    document.querySelectorAll('.sb-action').forEach(h => h.classList.toggle('near', h.dataset.key === zoneKey));
   }
 
   toggleStats(force) {

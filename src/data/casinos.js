@@ -1,6 +1,20 @@
 // The three casinos. Each is a full floor layout + base stats.
 // Sizes are in world units (metres-ish). Machines/tables are the base counts;
 // upgrades add more and the world builder places them in rows.
+
+export const CUSTOMER_TYPES = {
+  pensioner:  { name: 'Pensioners',    icon: '👴', spend: 0.6, stay: 1.4, sharpness: 0.3, desc: 'Slow and steady. Low spend, long stays.' },
+  tourist:    { name: 'Tourists',       icon: '📸', spend: 1.0, stay: 0.8, sharpness: 0.4, desc: 'Here for the photos. Average spend, short stays.' },
+  regular:    { name: 'Regulars',       icon: '🎰', spend: 0.9, stay: 1.2, sharpness: 0.7, desc: 'Know every machine. Decent spend, they stick around.' },
+  bachelor:   { name: 'Bachelor Party', icon: '🥳', spend: 1.5, stay: 0.6, sharpness: 0.2, desc: 'Big spenders, short attention span.' },
+  businesser: { name: 'Business Trips', icon: '💼', spend: 1.3, stay: 1.0, sharpness: 0.6, desc: 'Expense account gamblers. Solid spend.' },
+  high_roller:{ name: 'High Rollers',   icon: '💎', spend: 3.0, stay: 1.5, sharpness: 0.8, desc: 'The dream guests. Huge spend, sharp players.' },
+  whale:      { name: 'Whales',         icon: '🐋', spend: 5.0, stay: 2.0, sharpness: 0.9, desc: 'One whale can make your month. Or break it.' },
+  celeb:      { name: 'Celebrities',    icon: '⭐', spend: 2.5, stay: 0.7, sharpness: 0.3, desc: 'More flash than cash, but they draw crowds.' },
+  hustler:    { name: 'Hustlers',       icon: '🃏', spend: 0.8, stay: 1.8, sharpness: 0.95, desc: 'Card counters and angle shooters. Dangerous.' },
+  conventioneers: { name: 'Conventioneers', icon: '🏷️', spend: 1.1, stay: 1.0, sharpness: 0.5, desc: 'In town for a conference. Mild gamblers.' },
+};
+
 export const CASINOS = [
   {
     id: 'duck',
@@ -14,6 +28,7 @@ export const CASINOS = [
     carpetColor: 0x6b1e3a,
     trimColor: 0xd4a017,
     signColor: 0xffcc00,
+    customers: ['pensioner', 'tourist', 'regular'],
     base: {
       capacity: 8,
       machines: 4,
@@ -41,6 +56,7 @@ export const CASINOS = [
     carpetColor: 0x1a2848,
     trimColor: 0xb89840,
     signColor: 0xffd700,
+    customers: ['pensioner', 'tourist', 'regular', 'bachelor', 'businesser'],
     base: {
       capacity: 24,
       machines: 12,
@@ -61,13 +77,14 @@ export const CASINOS = [
     name: 'Palazzo Diablo, Las Vegas',
     tagline: 'The dream. A cathedral of neon where the sun never rises.',
     price: 350000,
-    width: 46,
-    depth: 34,
+    width: 56,
+    depth: 42,
     wallColor: 0xe8e0d0,
     floorColor: 0xf0ece0,
     carpetColor: 0xd8c8a8,
     trimColor: 0xd4af37,
     signColor: 0xff2255,
+    customers: ['pensioner', 'tourist', 'regular', 'bachelor', 'businesser', 'high_roller', 'whale'],
     base: {
       capacity: 60,
       machines: 30,

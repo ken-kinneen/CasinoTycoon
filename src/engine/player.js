@@ -35,6 +35,7 @@ export class Player {
     this.model = null;
     this.dragging = false;
     this.orbitCooldown = 0;
+    this.editor = null; // set externally so camera orbit defers to editor drag
     this.rebuildModel();
 
     window.addEventListener('keydown', e => { this.keys[e.code] = true; });
@@ -43,10 +44,14 @@ export class Player {
 
     let lastX = 0, lastY = 0;
     const canvas = document.getElementById('game');
-    canvas.addEventListener('mousedown', e => { this.dragging = true; lastX = e.clientX; lastY = e.clientY; });
+    canvas.addEventListener('mousedown', e => {
+      if (this.editor && this.editor.moveMode) return;
+      this.dragging = true; lastX = e.clientX; lastY = e.clientY;
+    });
     window.addEventListener('mouseup', () => { this.dragging = false; });
     window.addEventListener('mousemove', e => {
-      if (!this.dragging || !this.enabled) return;
+      if (!this.dragging) return;
+      if (this.editor && this.editor.moveMode) return;
       this.camYaw -= (e.clientX - lastX) * 0.006;
       this.camPitch = Math.max(0.15, Math.min(1.2, this.camPitch + (e.clientY - lastY) * 0.004));
       lastX = e.clientX; lastY = e.clientY;
@@ -62,9 +67,10 @@ export class Player {
     this.scene.add(this.model);
   }
 
-  teleport(x, z) {
+  teleport(x, z, facing) {
     this.pos.set(x, 0, z);
     this.model.position.copy(this.pos);
+    if (facing !== undefined) this.yaw = facing;
     this.camYaw = this.yaw + Math.PI;
     this.snapCamera = true;
   }

@@ -11,9 +11,9 @@ const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     time: { value: 0 },
-    vignette: { value: 0.55 },
-    grain: { value: 0.045 },
-    aberration: { value: 0.0018 },
+    vignette: { value: 0.45 },
+    grain: { value: 0.012 },
+    aberration: { value: 0.0004 },
     warmth: { value: 0.06 },
     resolution: { value: new THREE.Vector2(1, 1) },
   },
@@ -52,15 +52,24 @@ export function createPostFX(renderer, scene, camera) {
   const size = renderer.getSize(new THREE.Vector2());
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.5, 0.3, 1.5);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.35, 0.2, 1.8);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   grade.uniforms.resolution.value.set(size.x, size.y);
   composer.addPass(grade);
 
+  const sceneInfo = { calls: 0, triangles: 0 };
+  const renderPass = composer.passes[0];
+  const origRender = renderPass.render.bind(renderPass);
+  renderPass.render = function(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    origRender(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    sceneInfo.calls = renderer.info.render.calls;
+    sceneInfo.triangles = renderer.info.render.triangles;
+  };
+
   return {
-    composer, bloom, grade,
+    composer, bloom, grade, sceneInfo,
     render(dt) { grade.uniforms.time.value += dt; composer.render(); },
     resize(w, h) { composer.setSize(w, h); bloom.setSize(w / 2, h / 2); grade.uniforms.resolution.value.set(w, h); },
     setMood({ bloomStrength, vignette, warmth }) {

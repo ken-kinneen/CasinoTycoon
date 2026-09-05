@@ -218,6 +218,130 @@ export function marbleTexture(base = '#a09888', vein = '#787068', repeat = [2, 3
   }, { repeat });
 }
 
+/** Luxury marble tile floor: large polished tiles with gold grout lines and subtle veining. */
+export function marbleTileTexture(base = '#f0ece0', vein = '#d8d0c0', grout = '#d4af37', repeat = [6, 6]) {
+  return canvasTex(`marbletile|${base}|${vein}|${grout}`, 512, 512, (ctx, w, h) => {
+    const rnd = seeded(77);
+    ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+    // subtle noise
+    for (let i = 0; i < 6000; i++) {
+      const v = rnd() * 0.08;
+      ctx.fillStyle = `rgba(${rnd() > 0.5 ? '0,0,0' : '255,255,255'},${v})`;
+      ctx.fillRect(rnd() * w, rnd() * h, 2 + rnd() * 2, 2 + rnd() * 2);
+    }
+    // veining — thin elegant lines
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) {
+      ctx.strokeStyle = vein;
+      ctx.lineWidth = 0.5 + rnd() * 1.5;
+      ctx.globalAlpha = 0.2 + rnd() * 0.15;
+      ctx.beginPath();
+      let x = rnd() * w, y = rnd() * h;
+      ctx.moveTo(x, y);
+      for (let s = 0; s < 8; s++) { x += (rnd() - 0.5) * 60; y += 15 + rnd() * 30; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // gold grout lines — tile grid
+    ctx.strokeStyle = grout; ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, w - 4, h - 4);
+    ctx.beginPath(); ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+    // corner accent diamonds at each intersection
+    for (const [cx, cy] of [[0, 0], [w / 2, 0], [w, 0], [0, h / 2], [w / 2, h / 2], [w, h / 2], [0, h], [w / 2, h], [w, h]]) {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = grout; ctx.globalAlpha = 0.6;
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }, { repeat });
+}
+
+/** Herringbone parquet floor: warm toned wood in a V pattern. */
+export function herringboneTexture(color1 = '#c8b898', color2 = '#b8a888', accent = '#d4af37', repeat = [4, 4]) {
+  return canvasTex(`herring|${color1}|${color2}|${accent}`, 512, 512, (ctx, w, h) => {
+    ctx.fillStyle = color1; ctx.fillRect(0, 0, w, h);
+    const bw = 48, bh = 16;
+    const rnd = seeded(33);
+    for (let row = 0; row < h / bh + 2; row++) {
+      for (let col = 0; col < w / bw + 2; col++) {
+        const x = col * bw + (row % 2) * bw / 2;
+        const y = row * bh;
+        const v = rnd() * 15 - 7;
+        const isAlt = (col + row) % 2 === 0;
+        ctx.fillStyle = isAlt ? color1 : color2;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(isAlt ? 0.3 : -0.3);
+        ctx.fillRect(-bw / 2, -bh / 2, bw - 2, bh - 2);
+        // wood grain
+        ctx.strokeStyle = `rgba(0,0,0,0.06)`; ctx.lineWidth = 0.5;
+        for (let g = -bh / 2 + 2; g < bh / 2; g += 3) { ctx.beginPath(); ctx.moveTo(-bw / 2, g); ctx.lineTo(bw / 2, g + rnd() * 2); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+    // gold border accent line
+    ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.globalAlpha = 0.4;
+    ctx.strokeRect(4, 4, w - 8, h - 8);
+    ctx.globalAlpha = 1;
+  }, { repeat });
+}
+
+/** Ornate medallion floor: circular rosette pattern for grand entry areas. */
+export function medallionTexture(base = '#e8e0d0', gold = '#d4af37', dark = '#a09080', repeat = [1, 1]) {
+  return canvasTex(`medallion|${base}|${gold}|${dark}`, 512, 512, (ctx, w, h) => {
+    ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    // outer ring
+    ctx.strokeStyle = gold; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(cx, cy, 240, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, 230, 0, Math.PI * 2); ctx.stroke();
+    // star pattern
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.strokeStyle = i % 2 === 0 ? gold : dark; ctx.lineWidth = 2; ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * 220, cy + Math.sin(a) * 220); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // concentric decorative rings
+    for (const r of [180, 140, 80]) {
+      ctx.strokeStyle = gold; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    }
+    // inner rosette petals
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      ctx.fillStyle = gold; ctx.globalAlpha = 0.25;
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(a) * 55, cy + Math.sin(a) * 55, 45, 18, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // center compass rose
+    ctx.fillStyle = gold; ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const r = i % 2 === 0 ? 35 : 15;
+      i === 0 ? ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r) : ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    // corner fleur-de-lis hints (simple curves)
+    for (const [cornerX, cornerY] of [[20, 20], [w - 20, 20], [20, h - 20], [w - 20, h - 20]]) {
+      ctx.strokeStyle = gold; ctx.lineWidth = 2; ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.arc(cornerX, cornerY, 30, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cornerX - 10, cornerY); ctx.lineTo(cornerX + 10, cornerY); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cornerX, cornerY - 10); ctx.lineTo(cornerX, cornerY + 10); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }, { repeat });
+}
+
 /** Marquee bulb strip (for chase-light animation via texture offset). */
 export function bulbStripTexture(on = '#fff2b0', off = '#4a3a20') {
   return canvasTex(`bulbs|${on}|${off}`, 256, 32, (ctx, w, h) => {

@@ -43,10 +43,10 @@ export class Effects {
       this.root.add(s); this.haze.push(s);
     }
     // ---- cigarette smoke wisps rising from the machine rows ----------------------------
-    const smokeMat = new THREE.SpriteMaterial({ map: softSpriteTexture('200,200,220'), transparent: true, opacity: 0.18, depthWrite: false });
     this.smokeSources = world.machines.map(m => m.usePos);
+    const smokeMap = softSpriteTexture('200,200,220');
     for (let i = 0; i < 24; i++) {
-      const s = new THREE.Sprite(smokeMat.clone());
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeMap, transparent: true, opacity: 0.18, depthWrite: false }));
       this.resetSmoke(s, true);
       this.root.add(s); this.smoke.push(s);
     }
