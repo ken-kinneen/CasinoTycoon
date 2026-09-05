@@ -65,18 +65,22 @@ export class AdvertisingGame extends MiniGame {
 
   buildPath() {
     const margin = 40;
-    const pts = [{ x: GAME_X + margin + 20, y: GAME_Y + GAME_H - margin }];
-    const baseN = 3 + Math.floor(Math.random() * 3);
+    const spanX = (GAME_W - margin * 2) * 0.75;
+    const spanY = (GAME_H - margin * 2) * 0.75;
+    const ox = GAME_X + margin + (GAME_W - margin * 2 - spanX) / 2;
+    const oy = GAME_Y + GAME_H - margin;
+    const pts = [{ x: ox + 20, y: oy }];
+    const baseN = 2 + Math.floor(Math.random() * 3);
     const n = this.markDifficulty === 'hard' ? baseN + 2 : this.markDifficulty === 'easy' ? Math.max(2, baseN - 1) : baseN;
     for (let i = 1; i <= n; i++) {
       const t = i / (n + 1);
-      const wobble = this.markDifficulty === 'hard' ? 140 : this.markDifficulty === 'easy' ? 80 : 110;
+      const wobble = this.markDifficulty === 'hard' ? 105 : this.markDifficulty === 'easy' ? 60 : 82;
       pts.push({
-        x: GAME_X + margin + t * (GAME_W - margin * 2) + (Math.random() - 0.5) * wobble,
-        y: GAME_Y + GAME_H - margin - t * (GAME_H - margin * 2) + (Math.random() - 0.5) * (wobble * 1.2),
+        x: ox + t * spanX + (Math.random() - 0.5) * wobble,
+        y: oy - t * spanY + (Math.random() - 0.5) * (wobble * 1.2),
       });
     }
-    pts.push({ x: GAME_X + GAME_W - margin - 20 + Math.random() * 30, y: GAME_Y + margin + 10 + Math.random() * 40 });
+    pts.push({ x: ox + spanX - 20 + Math.random() * 25, y: oy - spanY + 10 + Math.random() * 30 });
     this.path = catmull(pts);
     this.start = this.path[0];
     this.end = this.path[this.path.length - 1];
@@ -255,21 +259,10 @@ export class AdvertisingGame extends MiniGame {
     ctx.restore();
 
     // stats
-    this.panel(ctx, 20, 474, LEFT_W - 40, 100, { accent: PAL.gold, corner: 10, r: 8 });
-    this.label(ctx, 'conversion', 40, 498, 10, PAL.dim);
-    this.text(ctx, `${Math.round(this.game.stats.cardConversion * 100)}%`, 40, 518, 22, PAL.green, 'left', undefined, 'bold');
-    this.label(ctx, 'channel', LEFT_W / 2 + 10, 498, 10, PAL.dim);
+    this.panel(ctx, 20, 474, LEFT_W - 40, 68, { accent: PAL.gold, corner: 10, r: 8 });
+    this.label(ctx, 'channel', 40, 498, 10, PAL.dim);
     const chanLabel = this.markDifficulty === 'easy' ? 'Wide' : this.markDifficulty === 'hard' ? 'Tight' : 'Normal';
-    this.text(ctx, chanLabel, LEFT_W / 2 + 10, 518, 22, this.markTier.color, 'left', undefined, 'bold');
-
-    // conversion pips
-    const convPct = this.game.stats.cardConversion;
-    const pips = 10;
-    const pipW = (LEFT_W - 80) / pips;
-    for (let i = 0; i < pips; i++) {
-      ctx.fillStyle = i / pips < convPct ? this.rgba(PAL.green, 0.8) : 'rgba(255,255,255,0.08)';
-      this.roundRect(ctx, 40 + i * pipW, 548, pipW - 3, 6, 2); ctx.fill();
-    }
+    this.text(ctx, chanLabel, 40, 518, 22, this.markTier.color, 'left', undefined, 'bold');
 
     // help text at bottom
     ctx.save(); ctx.globalAlpha = 0.5 + Math.sin(t * 3) * 0.2;

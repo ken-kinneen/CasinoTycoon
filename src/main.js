@@ -14,6 +14,7 @@ import { DealerGame } from './minigames/dealer.js';
 import { fmtMoney } from './minigames/base.js';
 import { PedestrianManager } from './world/pedestrians.js';
 import * as music from './audio/music.js';
+import * as sfx from './audio/sfx.js';
 
 const $ = id => document.getElementById(id);
 
@@ -222,11 +223,12 @@ function launchAdGame(ped) {
   activeGame = new AdvertisingGame(game, victim);
   activeGame.onDone = finish(res => {
     const slipped = res.deposited > 0;
-    const converted = slipped && Math.random() < game.stats.cardConversion ? 1 : 0;
-    if (converted) customers.queue(1);
+    if (slipped) customers.queue(1);
     if (slipped) {
-      showResult('Card slipped', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="row"><span>Guest on their way?</span><span class="big">${converted ? 'Yes' : 'No'}</span></div><div class="quip">"${converted ? 'They\'ll come. They always come.' : 'Planted, but they tossed it. Try another.'}"</div>`, converted ? 'HOOKED' : 'PLANTED');
+      sfx.playRandom('triumph', 'chuckle');
+      showResult('Card slipped', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="row"><span>Guest on their way?</span><span class="big">Yes</span></div><div class="quip">"They'll come. They always come."</div>`, 'HOOKED');
     } else {
+      sfx.playRandom('angry', 'frustrate');
       showResult('Busted', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="quip">"${['They felt that. Sloppy.', 'Gone. Find someone less alert.', 'Tighter grip next time.'][Math.floor(Math.random() * 3)]}"</div>`, 'BUSTED');
     }
   });
@@ -247,6 +249,8 @@ function startActivity(key) {
       game.addMoney(res.banked, 'cashrun');
       game.save();
       effects.float(player.pos.x, 2.4, player.pos.z, `+${fmtMoney(res.banked)}`, '#ffd700', 1.6);
+      if (res.banked > 0) sfx.playRandom('ching', 'triumph', 'chuckle');
+      else sfx.play('groan');
       showResult('Cash run', `<div class="row"><span>Hauled into the safe</span><span class="big">${fmtMoney(res.banked)}</span></div><div class="row"><span>Left in the hoppers</span><b>${fmtMoney(game.s.machineCash)}</b></div><div class="quip">"${res.banked === 0 ? 'Nothing? My back hurts for nothing?' : 'Mine. All mine. Legally mine, mostly.'}"</div>`, res.banked ? 'BANKED' : 'EMPTY');
     });
     activeGame.open(`Drag the stacks into the safe while the door is open. ${Math.round(game.stats.cashTime)} seconds.`);
@@ -255,6 +259,11 @@ function startActivity(key) {
     activeGame.onDone = finish(res => {
       game.save();
       const net = res.won - res.lost;
+      const hadBullseye = res.hands.some(h => h.bullseye);
+      if (hadBullseye) sfx.play('triumph');
+      else if (net > 0) sfx.playRandom('chuckle', 'happy', 'ching');
+      else if (net < 0) sfx.playRandom('oof', 'groan', 'frustrate');
+      else sfx.play('huff');
       showResult('The table', `<div class="row"><span>Hands dealt</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter(h => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? 'neg' : ''}">${net >= 0 ? '+' : '-'}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`, net >= 0 ? 'HOUSE' : 'OUCH');
     });
     activeGame.open('Lock the number inside the gambler\'s margin. SPACE or click.');

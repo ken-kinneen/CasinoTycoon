@@ -118,6 +118,8 @@ export function makeSlotMachine(i = 0) {
   g.add(box(0.7, 0.06, 0.26, mat(0x111111), 0, 0.29, 0.42));
   g.add(box(0.7, 0.14, 0.03, CHROME(), 0, 0.33, 0.55));
   const cash = box(0.5, 0.25, 0.2, glow(0x3cb371, 0.25), 0, 0.44, 0.42); cash.scale.y = 0.05; g.add(cash);
+  // stool
+  const stool = makeStool(); stool.position.set(0, 0, 0.85); g.add(stool);
   g.userData = { belly, candle, lever, cash, reels, light: { intensity: 0 }, theme: th };
   return g;
 }
@@ -311,6 +313,127 @@ export function makePlanter() {
   g.add(cyl(0.32, 0.26, 0.55, mat(0x1a1a1a, { roughness: 0.3 }), 0, 0.28, 0, 10));
   g.add(cyl(0.34, 0.34, 0.04, GOLD(), 0, 0.56, 0, 10));
   for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; const leaf = box(0.12, 0.9, 0.02, mat(0x1f7a3a, { side: THREE.DoubleSide }), Math.cos(a) * 0.15, 1.0, Math.sin(a) * 0.15); leaf.rotation.y = -a; leaf.rotation.z = (i % 2 ? 0.35 : -0.35) * Math.cos(a); leaf.rotation.x = 0.35; g.add(leaf); }
+  return g;
+}
+
+export function makeFireplace(tier = 'duck') {
+  const g = new THREE.Group();
+  const isMarble = tier !== 'duck';
+  const surround = isMarble
+    ? mat(0xd8d0c8, { roughness: 0.25, flatShading: false })
+    : mat(0x6b3a1a, { roughness: 0.7 });
+  const brick = mat(0x4a2210, { roughness: 0.95 });
+  // firebox opening
+  g.add(box(1.8, 1.4, 0.16, surround, 0, 0.7, 0));
+  g.add(box(1.2, 1.0, 0.12, brick, 0, 0.5, 0.04));
+  // mantel shelf
+  g.add(box(2.1, 0.1, 0.4, isMarble ? surround : mat(0x3a1a08, { roughness: 0.4 }), 0, 1.42, 0.12));
+  // mantel legs
+  for (const sx of [-0.8, 0.8]) g.add(box(0.14, 1.32, 0.14, surround, sx, 0.66, 0.12));
+  // decorative crown above mantel
+  g.add(box(2.0, 0.08, 0.06, GOLD(), 0, 1.52, 0.14));
+  // hearth base
+  g.add(box(2.0, 0.08, 0.5, brick, 0, 0.04, 0.17));
+  // logs inside
+  for (let i = 0; i < 3; i++) {
+    const lx = -0.25 + i * 0.25, lz = 0.04;
+    g.add(cyl(0.06, 0.07, 0.7, mat(0x3a2010, { roughness: 0.9 }), lx, 0.17, lz, 8).rotateZ(Math.PI / 2 + (i - 1) * 0.15));
+  }
+  // fire glow
+  g.add(box(0.8, 0.4, 0.1, glow(0xff5500, 2.8, { transparent: true, opacity: 0.7 }), 0, 0.35, 0.06));
+  g.add(box(0.5, 0.25, 0.06, glow(0xffaa00, 2.2, { transparent: true, opacity: 0.6 }), 0.1, 0.45, 0.08));
+  const fireLight = new THREE.PointLight(0xff6a20, 6, 6, 2);
+  fireLight.position.set(0, 0.5, 0.6); g.add(fireLight);
+  // fire screen (mesh grid)
+  g.add(box(1.15, 0.9, 0.01, mat(0x222222, { transparent: true, opacity: 0.3, metalness: 0.5, roughness: 0.3 }), 0, 0.5, 0.13));
+  // poker set on the side
+  g.add(cyl(0.04, 0.06, 0.04, mat(0x111111), 0.75, 0.06, 0.3, 8));
+  g.add(cyl(0.015, 0.015, 0.8, mat(0x222222, { metalness: 0.6 }), 0.75, 0.46, 0.3, 6));
+  g.add(cyl(0.015, 0.015, 0.8, mat(0x222222, { metalness: 0.6 }), 0.79, 0.46, 0.3, 6));
+  // mantel decorations: small trophy + candles
+  g.add(cyl(0.04, 0.06, 0.18, GOLD(), -0.5, 1.56, 0.12, 8));
+  g.add(cyl(0.03, 0.03, 0.14, mat(0xeee8d5), 0.5, 1.54, 0.12, 8));
+  g.add(sph(0.02, glow(0xffcc44, 3), 0.5, 1.63, 0.12, 6));
+  g.add(cyl(0.03, 0.03, 0.1, mat(0xeee8d5), 0.6, 1.52, 0.12, 8));
+  g.add(sph(0.02, glow(0xffcc44, 3), 0.6, 1.59, 0.12, 6));
+  g.userData = { fireLight };
+  return g;
+}
+
+export function makeWallPainting(seed = 0) {
+  const g = new THREE.Group();
+  const pw = 1.0 + (seed % 3) * 0.3;
+  const ph = 0.8 + ((seed + 1) % 3) * 0.2;
+  // gold frame
+  g.add(box(pw + 0.12, ph + 0.12, 0.04, GOLD(), 0, 0, 0));
+  // dark backing
+  const bgColors = [0x1a1a2e, 0x2e1a1a, 0x1a2e1a, 0x2a1a2e, 0x1e2a3a];
+  const bg = bgColors[seed % bgColors.length];
+  g.add(box(pw, ph, 0.03, mat(bg, { roughness: 0.85 }), 0, 0, 0.02));
+  // abstract shapes that suggest a scene (landscape, portrait, abstract)
+  const type = seed % 4;
+  if (type === 0) {
+    // landscape: horizon + moon
+    g.add(box(pw * 0.9, ph * 0.25, 0.01, mat(0x2a4a2a), 0, -ph * 0.2, 0.04));
+    g.add(box(pw * 0.9, ph * 0.08, 0.01, mat(0x3a3a7a), 0, -ph * 0.05, 0.04));
+    g.add(sph(0.08, glow(0xfff8cc, 0.6), pw * 0.25, ph * 0.2, 0.04, 8));
+  } else if (type === 1) {
+    // portrait silhouette
+    g.add(sph(0.14, mat(0x1a1a1a), 0, ph * 0.15, 0.04, 8));
+    g.add(box(0.18, 0.25, 0.01, mat(0x1a1a1a), 0, -ph * 0.1, 0.04));
+  } else if (type === 2) {
+    // abstract color blocks
+    const cols = [0x8b0000, 0xc8a020, 0x1a4a7a];
+    for (let i = 0; i < 3; i++) g.add(box(pw * 0.25, ph * 0.6, 0.01, mat(cols[i]), -pw * 0.25 + i * pw * 0.25, 0, 0.04));
+  } else {
+    // playing cards motif
+    g.add(box(0.15, 0.22, 0.01, mat(0xf0ece0), -0.12, 0.05, 0.04));
+    g.add(box(0.15, 0.22, 0.01, mat(0xf0ece0), 0.04, 0, 0.04).rotateZ(0.2));
+    g.add(box(0.15, 0.22, 0.01, mat(0xf0ece0), 0.18, -0.04, 0.04).rotateZ(-0.15));
+    g.add(sph(0.04, mat(0xcc2222), -0.12, 0.1, 0.05, 6));
+    g.add(sph(0.03, mat(0x111111), 0.06, 0.05, 0.05, 6));
+  }
+  return g;
+}
+
+export function makeCoffeeStation() {
+  const g = new THREE.Group();
+  const wood = mat(0x3a2010, { roughness: 0.45, flatShading: false });
+  const counter = mat(0x1a1a1e, { roughness: 0.2, metalness: 0.3, flatShading: false });
+  // counter body
+  g.add(box(2.4, 0.96, 0.7, wood, 0, 0.48, 0));
+  g.add(box(2.5, 0.06, 0.8, counter, 0, 0.99, 0));
+  // coffee urn (tall cylinder with spigot)
+  const urnMat = mat(0xc0c0cc, { metalness: 0.7, roughness: 0.25, flatShading: false });
+  g.add(cyl(0.14, 0.16, 0.5, urnMat, -0.7, 1.27, 0, 12));
+  g.add(cyl(0.16, 0.16, 0.03, urnMat, -0.7, 1.53, 0, 12));
+  g.add(cyl(0.02, 0.02, 0.08, urnMat, -0.7, 1.56, 0, 6));
+  g.add(box(0.04, 0.04, 0.08, mat(0x111111), -0.7, 1.12, 0.1));
+  // "COFFEE" label
+  g.add(box(0.2, 0.12, 0.01, mat(0x4a2a0a), -0.7, 1.35, 0.17));
+  // stacked cups
+  for (let i = 0; i < 3; i++) {
+    g.add(cyl(0.04, 0.035, 0.07, mat(0xf0ece0), -0.35 + i * 0.1, 1.06, -0.1, 8));
+  }
+  // donut/pastry tray
+  g.add(box(0.5, 0.04, 0.3, mat(0xf0ece0), 0.15, 1.04, 0));
+  // donuts (small tori)
+  for (let i = 0; i < 4; i++) {
+    const dx = -0.05 + (i % 2) * 0.18, dz = -0.06 + Math.floor(i / 2) * 0.13;
+    const donutColors = [0xd4881c, 0xe8638a, 0xc8a020, 0x8b4513];
+    g.add(torus(0.04, 0.018, mat(donutColors[i], { roughness: 0.6 }), 0.15 + dx, 1.09, dz).rotateX(Math.PI / 2));
+  }
+  // napkin dispenser
+  g.add(box(0.12, 0.16, 0.08, mat(0xc0c0cc, { metalness: 0.5, roughness: 0.35 }), 0.55, 1.1, 0.1));
+  g.add(box(0.1, 0.02, 0.06, mat(0xf0ece0), 0.55, 1.19, 0.1));
+  // second urn (hot water / tea)
+  g.add(cyl(0.1, 0.12, 0.36, urnMat, 0.75, 1.2, 0, 10));
+  g.add(cyl(0.12, 0.12, 0.03, urnMat, 0.75, 1.39, 0, 10));
+  // sugar packets / stirrers holder
+  g.add(box(0.14, 0.12, 0.08, mat(0x5a3a1a), -0.35, 1.08, 0.15));
+  // small sign
+  g.add(box(0.3, 0.2, 0.02, mat(0x2a1608), 0, 1.5, 0.41));
+  g.add(box(0.26, 0.16, 0.01, mat(0xf0ece0), 0, 1.5, 0.42));
   return g;
 }
 

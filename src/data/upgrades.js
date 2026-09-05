@@ -4,20 +4,20 @@
 
 export const AD_UPGRADES = [
   { id: 'ad_flyers', name: 'Gutter Flyers', cost: 150, blurb: 'Printed on the back of missing-cat posters. Waste not.', effects: [{ stat: 'trafficPerMin', add: 0.3 }] },
-  { id: 'ad_cardstock', name: 'Slippery Card Stock', cost: 300, blurb: 'Laminated so it slides into a pocket like a greased eel.', effects: [{ stat: 'cardConversion', add: 0.08 }] },
+  { id: 'ad_cardstock', name: 'Slippery Card Stock', cost: 300, blurb: 'Laminated so it slides into a pocket like a greased eel.', effects: [{ stat: 'cardWidth', add: 0.06 }] },
   { id: 'ad_lemonade', name: 'Sponsor the Kids\' Lemonade Stand', cost: 600, blurb: 'Every cup comes with a coupon. Start them young.', effects: [{ stat: 'trafficPerMin', add: 0.5 }, { stat: 'heat', add: 3 }] },
   { id: 'ad_bus', name: 'School Bus Wrap', cost: 1200, blurb: 'Route 9 goes past three schools. That\'s three schools of future regulars.', model: 'bus', effects: [{ stat: 'trafficPerMin', add: 1 }, { stat: 'heat', add: 8 }] },
-  { id: 'ad_jingle', name: '"Everybody Wins!" Radio Jingle', cost: 2000, blurb: 'Nobody wins. But it rhymes.', effects: [{ stat: 'cardConversion', add: 0.08 }, { stat: 'trafficPerMin', add: 0.8 }] },
+  { id: 'ad_jingle', name: '"Everybody Wins!" Radio Jingle', cost: 2000, blurb: 'Nobody wins. But it rhymes.', effects: [{ stat: 'cardWidth', add: 0.05 }, { stat: 'trafficPerMin', add: 0.8 }] },
   { id: 'ad_shuttle', name: 'Retirement Home Shuttle', cost: 3500, blurb: 'Free ride there. The ride back is... negotiable.', model: 'shuttle', effects: [{ stat: 'trafficPerMin', add: 1.5 }, { stat: 'stayTime', mul: 1.15 }, { stat: 'heat', add: 5 }] },
-  { id: 'ad_testimonials', name: 'Fake Winner Testimonials', cost: 5000, blurb: 'Meet "Linda", who won a boat. Linda is my cousin. There is no boat.', effects: [{ stat: 'cardConversion', add: 0.1 }, { stat: 'prestige', add: 5 }] },
+  { id: 'ad_testimonials', name: 'Fake Winner Testimonials', cost: 5000, blurb: 'Meet "Linda", who won a boat. Linda is my cousin. There is no boat.', effects: [{ stat: 'cardWidth', add: 0.06 }, { stat: 'prestige', add: 5 }] },
   { id: 'ad_spam', name: 'Spam Text Blast', cost: 8000, blurb: 'WE HAVE UR NUMBER. COME PLAY. THIS IS NOT A THREAT (it is).', effects: [{ stat: 'trafficPerMin', add: 2 }, { stat: 'heat', add: 6 }] },
   { id: 'ad_church', name: 'Church Bulletin Ads', cost: 12000, blurb: 'Right under the prayer list. They\'re already hoping for a miracle.', effects: [{ stat: 'trafficPerMin', add: 1.5 }, { stat: 'sharpness', add: -0.05 }] },
   { id: 'ad_payday', name: 'Payday Loan Partnership', cost: 18000, blurb: 'A loan kiosk by the door. 400% APR. We split the interest.', effects: [{ stat: 'spendPerMin', mul: 1.15 }, { stat: 'heat', add: 10 }] },
   { id: 'ad_billboard', name: 'Highway Billboard', cost: 30000, blurb: 'Forty feet of my face. Drivers can\'t look away. Some crash.', model: 'billboard', effects: [{ stat: 'trafficPerMin', add: 3 }] },
   { id: 'ad_influencer', name: 'Influencer Bribes', cost: 50000, blurb: '#blessed #sponsored #notarigged', effects: [{ stat: 'trafficPerMin', add: 4 }, { stat: 'prestige', add: 10 }] },
-  { id: 'ad_subliminal', name: 'Subliminal Cinema Frames', cost: 80000, blurb: 'One frame every 24. Popcorn sales are down, our sales are up.', effects: [{ stat: 'cardConversion', add: 0.12 }, { stat: 'trafficPerMin', add: 3 }] },
+  { id: 'ad_subliminal', name: 'Subliminal Cinema Frames', cost: 80000, blurb: 'One frame every 24. Popcorn sales are down, our sales are up.', effects: [{ stat: 'cardWidth', add: 0.08 }, { stat: 'trafficPerMin', add: 3 }] },
   { id: 'ad_airport', name: 'Fake "Winner\'s" Airport Shuttle', cost: 150000, blurb: 'It says VIP on the side. It stops here. Only here.', effects: [{ stat: 'trafficPerMin', add: 6 }, { stat: 'prestige', add: 10 }, { stat: 'heat', add: 8 }] },
-  { id: 'ad_tv', name: 'National TV Campaign', cost: 300000, blurb: 'Prime time. Between the news and the lottery. Perfect placement.', effects: [{ stat: 'trafficPerMin', add: 10 }, { stat: 'cardConversion', add: 0.1 }, { stat: 'prestige', add: 15 }] },
+  { id: 'ad_tv', name: 'National TV Campaign', cost: 300000, blurb: 'Prime time. Between the news and the lottery. Perfect placement.', effects: [{ stat: 'trafficPerMin', add: 10 }, { stat: 'cardWidth', add: 0.08 }, { stat: 'prestige', add: 15 }] },
 ];
 
 // 15 upgrades for each casino. Keyed by casino id.

@@ -168,6 +168,84 @@ export class CasinoWorld {
     if (has('cameras')) for (let i = 0; i < 6; i++) { const c = M.makeCamera(); c.position.set((Math.random() - 0.5) * (W - 3), H - 0.45, (Math.random() - 0.5) * (D - 3)); add(c); }
 
     // =====================================================================
+    // WALL & FLOOR DRESSING
+    // =====================================================================
+    const gold = M.GOLD(), chrome = M.CHROME();
+
+    // wainscoting / baseboard trim along all interior walls
+    const trimMat = M.mat(def.id === 'diablo' ? 0x6b4a08 : 0x3a2a1a, { roughness: 0.5, metalness: 0.15 });
+    add(M.box(W, 0.5, 0.06, trimMat, 0, 0.37, -D / 2 + 0.22));
+    add(M.box(0.06, 0.5, D, trimMat, -W / 2 + 0.22, 0.37, 0));
+    add(M.box(0.06, 0.5, D, trimMat, W / 2 - 0.22, 0.37, 0));
+    add(M.box(W, 0.04, 0.02, gold, 0, 0.63, -D / 2 + 0.24));
+    add(M.box(0.02, 0.04, D, gold, -W / 2 + 0.24, 0.63, 0));
+    add(M.box(0.02, 0.04, D, gold, W / 2 - 0.24, 0.63, 0));
+
+    // fireplace on the right wall, facing inward
+    const fp = M.makeFireplace(def.id);
+    fp.position.set(W / 2 - 0.22, 0.12, -D / 4);
+    fp.rotation.y = -Math.PI / 2;
+    add(fp); this.addCollider(W / 2 - 0.6, -D / 4, 0.8, 2.2);
+    this.animated.push({ type: 'fire', obj: fp, t: Math.random() * 10 });
+
+    // framed paintings along the back wall
+    { let seed = 0;
+      for (let x = -W / 2 + 5; x < W / 2 - 5; x += W / (def.id === 'duck' ? 2.5 : 4)) {
+        if (Math.abs(x - W / 4) < 1.8) continue;
+        const p = M.makeWallPainting(seed++);
+        p.position.set(x, 2.8, -D / 2 + 0.24); add(p);
+      }
+    }
+    // paintings along the right wall (between sconces)
+    { let seed = 4;
+      for (let z = -D / 2 + 4; z < D / 2 - 4; z += D / (def.id === 'duck' ? 2 : 3)) {
+        const p = M.makeWallPainting(seed++);
+        p.position.set(W / 2 - 0.22, 2.8, z); p.rotation.y = -Math.PI / 2; add(p);
+      }
+    }
+
+    // coffee & snacks station along left wall (in front of the office area)
+    const coffee = M.makeCoffeeStation();
+    coffee.position.set(-W / 2 + 1.5, 0.12, D * 0.12);
+    coffee.rotation.y = Math.PI / 2;
+    add(coffee); this.addCollider(-W / 2 + 1.5, D * 0.12, 1.0, 2.6);
+
+    // fire extinguisher on the left wall near the back
+    const fex = -W / 2 + 0.26, fez = -D / 2 + D * 0.65;
+    add(M.cyl(0.08, 0.08, 0.45, M.mat(0xcc2222, { roughness: 0.3 }), fex, 1.1, fez, 10));
+    add(M.cyl(0.03, 0.03, 0.12, M.mat(0x111111), fex, 1.38, fez, 6));
+    add(M.box(0.04, 0.16, 0.1, chrome, fex, 1.45, fez));
+
+    // trash cans tucked in corners near the entrance
+    const trashMat = M.mat(0x222228, { roughness: 0.6 });
+    for (const [tx, tz] of [[W / 2 - 0.6, D / 2 - 1.0], [-W / 2 + 0.6, D / 2 - 1.0]]) {
+      add(M.cyl(0.2, 0.16, 0.65, trashMat, tx, 0.44, tz, 10));
+      add(M.cyl(0.22, 0.22, 0.04, trashMat, tx, 0.77, tz, 10));
+    }
+
+    // floor-level cable covers running along back wall
+    add(M.box(W * 0.6, 0.04, 0.2, M.mat(0x2a2a2e, { roughness: 0.9 }), 0, 0.14, -D / 2 + 0.8));
+
+    // ashtray stands along the right wall corridor
+    for (let z = -D / 2 + 6; z < D / 2 - 6; z += D / 3) {
+      add(M.cyl(0.12, 0.15, 0.9, chrome, W / 2 - 1.0, 0.57, z, 8));
+      add(M.cyl(0.18, 0.12, 0.08, M.mat(0x111111), W / 2 - 1.0, 1.05, z, 10));
+    }
+
+    // stanchion posts near the entrance (crowd control, nicer casinos)
+    if (def.id !== 'duck') {
+      for (const sx of [-4.5, 4.5]) {
+        add(M.cyl(0.03, 0.03, 1.0, gold, sx, 0.62, D / 2 - 2.8, 8));
+        add(M.cyl(0.16, 0.18, 0.04, gold, sx, 0.14, D / 2 - 2.8, 12));
+        add(M.sph(0.05, gold, sx, 1.14, D / 2 - 2.8, 8));
+      }
+    }
+
+    // extra planters near the coffee station and right-side corridor
+    { const p1 = M.makePlanter(); p1.position.set(-W / 2 + 0.7, 0.12, D * 0.12 + 1.8); add(p1); }
+    { const p2 = M.makePlanter(); p2.position.set(W / 2 - 0.7, 0.12, -D / 2 + 1.2); add(p2); }
+
+    // =====================================================================
     // OFFICE (back-left): desk, safe, cage
     // =====================================================================
     const ox = -W / 2 + 3.2, oz = -D / 2 + 2.4;
@@ -344,6 +422,7 @@ export class CasinoWorld {
         case 'tiger': a.obj.userData.tail.rotation.y = Math.sin(a.t * 3) * 0.5; break;
         case 'fountain': a.obj.userData.jet.scale.y = 0.85 + Math.sin(a.t * 6) * 0.15; break;
         case 'volcano': { const e = (a.t % 15) < 2.5; a.obj.userData.light.intensity = e ? 60 + Math.sin(a.t * 30) * 30 : 14; a.obj.userData.lava.scale.y = e ? 3 : 1; break; }
+        case 'fire': { const fl = a.obj.userData.fireLight; fl.intensity = 5 + Math.sin(a.t * 8) * 1.5 + Math.sin(a.t * 13.7) * 0.8; break; }
         case 'wheel': a.obj.rotation.y += dt * 2; break;
         case 'bus': a.obj.position.x = -a.range / 2 + ((a.t * 5) % a.range); break;
         case 'car': a.obj.position.x = -a.range / 2 + ((a.t * 11) % a.range); break;

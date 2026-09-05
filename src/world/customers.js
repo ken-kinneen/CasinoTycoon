@@ -11,9 +11,9 @@ export const TYPE_INFO = {
 };
 
 export const DIFFICULTY_TIERS = {
-  easy:   { label: 'Easy',   color: '#3ddc84', dealerMarginMul: 1.5, dealerSpeedMul: 0.7, betMul: 0.6, channelMul: 1.4, stayMul: 1.2 },
-  medium: { label: 'Medium', color: '#f5c542', dealerMarginMul: 1.0, dealerSpeedMul: 1.0, betMul: 1.0, channelMul: 1.0, stayMul: 1.0 },
-  hard:   { label: 'Hard',   color: '#ff4d5e', dealerMarginMul: 0.55, dealerSpeedMul: 1.5, betMul: 1.8, channelMul: 0.65, stayMul: 0.8 },
+  easy:   { label: 'Easy',   color: '#3ddc84', dealerMarginMul: 1.0, dealerSpeedMul: 1.0, betMul: 0.6, channelMul: 1.4, stayMul: 1.2 },
+  medium: { label: 'Medium', color: '#f5c542', dealerMarginMul: 0.7, dealerSpeedMul: 1.0, betMul: 1.0, channelMul: 1.0, stayMul: 1.0 },
+  hard:   { label: 'Hard',   color: '#ff4d5e', dealerMarginMul: 0.4, dealerSpeedMul: 1.0, betMul: 1.8, channelMul: 0.65, stayMul: 0.8 },
 };
 
 const DIFFICULTY_WEIGHTS = {
@@ -114,7 +114,7 @@ export class CustomerManager {
     const w = this.world;
     const aisle = c.machine ? c.machine.aisleZ : c.table ? c.table.aisleZ : w.aisleZ;
     if (c.spent > 0 && this.effects) this.effects.float(c.group.position.x, 2.1, c.group.position.z, `+$${Math.round(c.spent)}`, c.type === 'whale' ? '#ffd700' : '#3cb371', c.type === 'whale' ? 1.4 : 1);
-    if (c.machine) { c.machine.occupant = null; c.machine = null; }
+    if (c.machine) { c.group.position.y = 0; c.machine.occupant = null; c.machine = null; }
     if (c.table) { c.table.occupants = c.table.occupants.filter(o => o !== c); c.table = null; }
     c.state = 'leaving';
     c.path = w.pathOut(c.group.position, aisle);
@@ -164,7 +164,12 @@ export class CustomerManager {
       } else if (c.state === 'walking') {
         c.state = 'using';
         c.useTimer = st.stayTime * (0.7 + Math.random() * 0.6) * (c.type === 'whale' ? 1.4 : 1) * DIFFICULTY_TIERS[c.difficulty].stayMul;
-        if (c.machine) g.rotation.y = Math.atan2(c.machine.pos.x - g.position.x, c.machine.pos.z - g.position.z); else g.lookAt(c.table.pos.x, g.position.y, c.table.pos.z);
+        if (c.machine) {
+          g.rotation.y = Math.atan2(c.machine.pos.x - g.position.x, c.machine.pos.z - g.position.z);
+          g.position.y = 0.19;
+          u.legL.rotation.x = -Math.PI / 2;
+          u.legR.rotation.x = -Math.PI / 2;
+        } else g.lookAt(c.table.pos.x, g.position.y, c.table.pos.z);
         g.rotation.z = 0;
       } else if (c.state === 'using') {
         c.useTimer -= dt;
@@ -173,10 +178,17 @@ export class CustomerManager {
         const room = st.hopperCap - hopper.cash;
         const spend = spendPerSec * c.info.spend * dt;
         if (room > 0) { const s = Math.min(room, spend); hopper.cash += s; this.game.s.machineCash += s; c.spent += s; }
-        animatePerson(g, dt, { walking: false, walkT: c.walkT, drunk: c.type === 'drunk' });
-        // lever-pull / chip-push animation
-        if (c.machine) { u.armR.rotation.x = Math.sin(c.walkT * 4) > 0.6 ? -1.7 : -0.4; u.armL.rotation.x = -0.3; }
-        else { u.armL.rotation.x = -0.9 + Math.sin(c.walkT * 2) * 0.2; u.armR.rotation.x = -0.7; }
+        if (c.machine) {
+          u.legL.rotation.x = -Math.PI / 2;
+          u.legR.rotation.x = -Math.PI / 2;
+          u.body.scale.y = 1 + Math.sin(c.walkT * 2) * 0.01;
+          u.head.rotation.y = Math.sin(c.walkT * 0.7) * 0.15;
+          u.armR.rotation.x = Math.sin(c.walkT * 4) > 0.6 ? -1.7 : -0.4;
+          u.armL.rotation.x = -0.3;
+        } else {
+          animatePerson(g, dt, { walking: false, walkT: c.walkT, drunk: c.type === 'drunk' });
+          u.armL.rotation.x = -0.9 + Math.sin(c.walkT * 2) * 0.2; u.armR.rotation.x = -0.7;
+        }
         if (c.useTimer <= 0) this.leave(c);
       } else if (c.state === 'leaving') {
         this.scene.remove(g);

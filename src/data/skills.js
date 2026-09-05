@@ -12,7 +12,6 @@ export const SKILLS = [
     perLevel: [
       { stat: 'cardWidth', mul: 1.18 },
       { stat: 'cardTime', add: 5 },
-      { stat: 'cardConversion', add: 0.03 },
     ],
     cosmetic: ['White gloves', 'Ring on every finger', 'Diamond pinky ring', 'Gold watch', 'Sleeve full of aces'],
   },

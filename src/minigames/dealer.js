@@ -1,13 +1,18 @@
 // Dealer: a target number is drawn, a 10-second countdown starts and the
 // house number sweeps 0-100. Hit SPACE / click to lock it in. Land inside the
 // gambler's margin of error and the house takes the bet.
+// Bullseye: a tiny zone dead-center pays 2x.
 import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
 import { TYPE_INFO, DIFFICULTY_TIERS } from '../world/customers.js';
+import * as sfx from '../audio/sfx.js';
 
 const QUIPS = {
   win: ['"Better luck next time." (there is no next time)', '"House wins. House always wins."', '"Oh no, so close!" (it wasn\'t close)', '"Would you like a complimentary drink?"'],
   lose: ['"...Congratulations." *grinds teeth*', '"That one\'s on the house. The house is furious."', '"Enjoy it. I know where you live."', '"A fluke. Deal again."'],
+  bullseye: ['"Dead center. You\'re terrifying."', '"Perfection. The pit boss is watching."', '"Bullseye. Remind me never to bet against you."', '"Right on the money. Literally."'],
 };
+
+const BULLSEYE_RADIUS = 1;
 
 export class DealerGame extends MiniGame {
   constructor(game, players) {
@@ -21,6 +26,7 @@ export class DealerGame extends MiniGame {
     this.number = 0; this.dir = 1;
     this.shake = 0;
     this.chips = [];
+    this.bullseyeFlash = 0;
     this.setupHand();
   }
 
@@ -45,7 +51,7 @@ export class DealerGame extends MiniGame {
       target: 5 + Math.floor(Math.random() * 91),
     };
     this.countdown = 10;
-    this.speed = 35 * st.dealerSpeed * tier.dealerSpeedMul;
+    this.speed = 35 * st.dealerSpeed;
     this.number = Math.random() * 100; this.dir = 1;
     this.locked = null;
   }
@@ -53,18 +59,37 @@ export class DealerGame extends MiniGame {
   lock() {
     if (this.phase !== 'play') return;
     this.locked = Math.round(this.number);
-    const hit = Math.abs(this.locked - this.current.target) <= this.current.margin;
-    this.resolve(hit);
+    const diff = Math.abs(this.locked - this.current.target);
+    const hit = diff <= this.current.margin;
+    const bullseye = diff <= BULLSEYE_RADIUS;
+    this.resolve(hit, bullseye);
   }
-  resolve(hit) {
+  resolve(hit, bullseye = false) {
     const st = this.game.stats;
-    const amount = hit ? Math.round(this.current.bet * st.houseEdge) : this.current.bet;
+    const mul = bullseye ? 2 : 1;
+    const amount = hit ? Math.round(this.current.bet * st.houseEdge * mul) : this.current.bet;
     if (hit) { this.won += amount; this.game.addMoney(amount, 'dealer'); }
     else { const pay = Math.min(amount, this.game.s.money); this.game.spend(pay); this.lost += pay; }
-    this.results.push({ hit, amount, quip: QUIPS[hit ? 'win' : 'lose'][Math.floor(Math.random() * 4)] });
-    this.burst(GW / 2, 262, hit ? PAL.gold : PAL.red, hit ? 28 : 14);
-    this.shake = hit ? 0.35 : 0.5;
-    this.phase = 'result'; this.phaseT = 2.0;
+
+    const pool = bullseye ? QUIPS.bullseye : QUIPS[hit ? 'win' : 'lose'];
+    this.results.push({ hit, bullseye, amount, quip: pool[Math.floor(Math.random() * pool.length)] });
+
+    if (bullseye) {
+      sfx.play('bullseye');
+      this.burst(GW / 2, 262, PAL.gold, 40);
+      this.burst(GW / 2, 262, '#fff', 16);
+      this.shake = 0.6;
+      this.bullseyeFlash = 1;
+    } else if (hit) {
+      sfx.playRandom('happy', 'chuckle', 'ching');
+      this.burst(GW / 2, 262, PAL.gold, 28);
+      this.shake = 0.35;
+    } else {
+      sfx.playRandom('groan', 'oof', 'frustrate');
+      this.burst(GW / 2, 262, PAL.red, 14);
+      this.shake = 0.5;
+    }
+    this.phase = 'result'; this.phaseT = bullseye ? 2.6 : 2.0;
   }
 
   onDown() { this.lock(); }
@@ -72,6 +97,7 @@ export class DealerGame extends MiniGame {
 
   update(dt) {
     this.shake = Math.max(0, this.shake - dt * 1.6);
+    this.bullseyeFlash = Math.max(0, this.bullseyeFlash - dt * 0.8);
     for (let i = this.chips.length - 1; i >= 0; i--) {
       const p = this.chips[i];
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 620 * dt; p.vx *= 0.98; p.r += p.vr * dt;
@@ -99,23 +125,19 @@ export class DealerGame extends MiniGame {
   /** Green felt half-round under a low pendant lamp. */
   drawTable(ctx) {
     const t = this.t;
-    // pendant lamp cone
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const cone = ctx.createRadialGradient(GW / 2, 210, 20, GW / 2, 380, 520);
     cone.addColorStop(0, 'rgba(255,214,150,0.16)'); cone.addColorStop(1, 'rgba(255,214,150,0)');
     ctx.fillStyle = cone; ctx.beginPath();
     ctx.moveTo(GW / 2 - 60, 0); ctx.lineTo(GW / 2 + 60, 0); ctx.lineTo(GW / 2 + 470, GH); ctx.lineTo(GW / 2 - 470, GH); ctx.closePath(); ctx.fill();
     ctx.restore();
-    // felt
     const cx = GW / 2, cy = GH + 90, rx = 640, ry = 430;
     const felt = ctx.createRadialGradient(cx, cy - ry * 0.6, 40, cx, cy, rx);
     felt.addColorStop(0, '#12492d'); felt.addColorStop(0.45, '#092e1d'); felt.addColorStop(1, '#03110b');
     ctx.fillStyle = felt; ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.fill();
-    // felt weave
     ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.clip();
     ctx.globalAlpha = 0.05; ctx.strokeStyle = '#9fe8bd'; ctx.lineWidth = 1;
     for (let x = 0; x < GW; x += 7) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke(); }
-    // gold arc line + house legend
     ctx.globalAlpha = 1;
     ctx.strokeStyle = this.rgba(PAL.gold, 0.35); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.ellipse(cx, cy, rx - 90, ry - 70, 0, Math.PI, 0); ctx.stroke();
@@ -126,7 +148,6 @@ export class DealerGame extends MiniGame {
     this.neon(ctx, 'THE HOUSE PAYS WHAT THE HOUSE DECIDES', cx, GH - 22, 22, PAL.gold, 'center', 0, 6);
     ctx.restore();
     ctx.restore();
-    // padded rail
     ctx.save();
     ctx.strokeStyle = '#3a2412'; ctx.lineWidth = 22; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.stroke();
@@ -135,7 +156,6 @@ export class DealerGame extends MiniGame {
     ctx.strokeStyle = this.rgba(PAL.gold, 0.25); ctx.lineWidth = 2;
     ctx.beginPath(); ctx.ellipse(cx, cy, rx - 9, ry - 6, 0, Math.PI, 0); ctx.stroke();
     ctx.restore();
-    // chip rack + shoe as set dressing
     ctx.save();
     ctx.fillStyle = '#1a1220'; this.roundRect(ctx, 92, GH - 92, 190, 44, 8); ctx.fill();
     const chipCols = [PAL.red, '#f7f3e8', PAL.cyan, PAL.gold];
@@ -146,7 +166,6 @@ export class DealerGame extends MiniGame {
       }
     }
     ctx.globalAlpha = 1;
-    // dealing shoe: dark housing, card stack with visible edges, gold lip
     const sx = GW - 268, sy = GH - 96;
     ctx.fillStyle = '#241a30'; this.roundRect(ctx, sx, sy, 96, 52, 8); ctx.fill();
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; this.roundRect(ctx, sx + 6, sy + 6, 84, 26, 4); ctx.fill();
@@ -164,13 +183,11 @@ export class DealerGame extends MiniGame {
     const t = this.t;
     const tint = { drunk: PAL.pink, regular: PAL.cyan, sharp: '#b39ddb', whale: PAL.gold }[cur.type] || PAL.cyan;
     this.panel(ctx, 26, 88, 268, 168, { accent: tint });
-    // portrait chip
     ctx.save();
     ctx.translate(72, 150);
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = tint; ctx.lineWidth = 2; ctx.shadowColor = tint; ctx.shadowBlur = 12; ctx.stroke();
     ctx.shadowBlur = 0;
-    // tiny head
     ctx.fillStyle = '#c68a5e'; ctx.beginPath(); ctx.arc(0, -3 + Math.sin(t * 2) * 1.2, 15, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#2a1d16'; ctx.beginPath(); ctx.arc(0, -9, 15, Math.PI, 0); ctx.fill();
     ctx.fillStyle = '#111';
@@ -183,7 +200,6 @@ export class DealerGame extends MiniGame {
 
     this.label(ctx, `hand ${this.hand + 1} of ${this.players.length}`, 118, 100, 11, PAL.dim);
     this.neon(ctx, `${cur.label} gambler`, 118, 126, 24, tint, 'left', 12, 1);
-    // difficulty badge
     ctx.save();
     ctx.fillStyle = this.rgba(cur.tierColor, 0.18);
     this.roundRect(ctx, 118, 140, 62, 20, 4); ctx.fill();
@@ -195,7 +211,6 @@ export class DealerGame extends MiniGame {
     this.text(ctx, `±${cur.margin}`, 118, 194, 22, PAL.bone, 'left');
     this.label(ctx, 'bet', 214, 172, 10, PAL.dim);
     this.text(ctx, fmtMoney(cur.bet), 214, 194, 22, PAL.green, 'left');
-    // margin pips
     const pips = Math.min(10, Math.round(cur.margin / 2));
     for (let i = 0; i < 10; i++) {
       ctx.fillStyle = i < pips ? this.rgba(PAL.green, 0.9) : 'rgba(255,255,255,0.10)';
@@ -205,7 +220,6 @@ export class DealerGame extends MiniGame {
 
   drawTarget(ctx, cur) {
     const x = GW - 214, y = 88, w = 188, h = 168;
-    // playing-card look
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
     ctx.fillStyle = '#f7f3e8'; this.roundRect(ctx, x, y, w, h, 10); ctx.fill();
@@ -215,7 +229,6 @@ export class DealerGame extends MiniGame {
     this.roundRect(ctx, x + 14, y + 14, w - 28, h - 28, 5); ctx.stroke();
     this.label(ctx, 'the number', x + w / 2, y + 34, 11, PAL.gold, 'center');
     this.neon(ctx, `${cur.target}`, x + w / 2, y + 96, 78, PAL.bone, 'center', 22, 2);
-    // corner pips
     ctx.fillStyle = PAL.red;
     ctx.font = `18px ${SERIF}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText('♦', x + 20, y + 22); ctx.textAlign = 'right'; ctx.fillText('♦', x + w - 20, y + h - 22);
@@ -227,15 +240,27 @@ export class DealerGame extends MiniGame {
     if (this.shake > 0) ctx.translate((Math.random() - 0.5) * this.shake * 16, (Math.random() - 0.5) * this.shake * 16);
 
     this.backdrop(ctx, PAL.green, t);
+
+    // bullseye screen flash
+    if (this.bullseyeFlash > 0) {
+      ctx.save(); ctx.globalAlpha = this.bullseyeFlash * 0.25;
+      ctx.fillStyle = PAL.gold; ctx.fillRect(0, 0, GW, GH);
+      ctx.restore();
+    }
+
     this.drawTable(ctx);
     this.drawGambler(ctx, cur);
     this.drawTarget(ctx, cur);
 
     if (this.phase === 'play' || this.phase === 'result') {
       const n = this.phase === 'result' && this.locked !== null ? this.locked : Math.round(this.number);
-      const hit = Math.abs(n - cur.target) <= cur.margin;
-      const near = Math.abs(n - cur.target) <= cur.margin;
-      const col = this.phase === 'result' ? (hit ? PAL.green : PAL.red) : near ? PAL.green : PAL.bone;
+      const diff = Math.abs(n - cur.target);
+      const hit = diff <= cur.margin;
+      const isBullseye = diff <= BULLSEYE_RADIUS;
+      const near = hit;
+      const col = this.phase === 'result'
+        ? (isBullseye && hit ? PAL.gold : hit ? PAL.green : PAL.red)
+        : near ? PAL.green : PAL.bone;
 
       // display housing
       this.panel(ctx, GW / 2 - 148, 152, 296, 190, { accent: col, fill: 'rgba(4,3,8,0.8)', r: 14, corner: 22 });
@@ -249,14 +274,35 @@ export class DealerGame extends MiniGame {
       ctx.fillStyle = 'rgba(0,0,0,0.55)'; this.roundRect(ctx, tx - 8, ty - 12, tw + 16, 34, 8); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = 'rgba(255,255,255,0.07)'; this.roundRect(ctx, tx, ty, tw, 10, 5); ctx.fill();
-      // safe band
+
+      // safe band (green)
       const lo = (cur.target - cur.margin) / 100, hi = (cur.target + cur.margin) / 100;
       ctx.save(); ctx.shadowColor = PAL.green; ctx.shadowBlur = 16;
       ctx.fillStyle = this.rgba(PAL.green, 0.75);
       this.roundRect(ctx, tx + lo * tw, ty - 4, (hi - lo) * tw, 18, 4); ctx.fill();
       ctx.restore();
-      // target tick
-      ctx.fillStyle = PAL.bone; ctx.fillRect(tx + (cur.target / 100) * tw - 1, ty - 10, 2, 30);
+
+      // bullseye zone (bright gold diamond in the center of the green band)
+      const blo = (cur.target - BULLSEYE_RADIUS) / 100, bhi = (cur.target + BULLSEYE_RADIUS) / 100;
+      const bx = tx + blo * tw, bw = (bhi - blo) * tw;
+      const bullPulse = 0.7 + Math.sin(t * 6) * 0.3;
+      ctx.save();
+      ctx.shadowColor = PAL.gold; ctx.shadowBlur = 12 + bullPulse * 6;
+      ctx.fillStyle = this.rgba(PAL.gold, 0.85 * bullPulse + 0.15);
+      this.roundRect(ctx, bx, ty - 6, Math.max(bw, 6), 22, 3); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      // diamond icon above the bullseye
+      ctx.save();
+      const dmx = tx + (cur.target / 100) * tw;
+      ctx.fillStyle = this.rgba(PAL.gold, 0.6 + Math.sin(t * 5) * 0.3);
+      ctx.shadowColor = PAL.gold; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(dmx, ty - 18); ctx.lineTo(dmx + 5, ty - 12); ctx.lineTo(dmx, ty - 6); ctx.lineTo(dmx - 5, ty - 12);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+
       // scale marks
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
       for (let i = 0; i <= 10; i++) ctx.fillRect(tx + i * tw / 10, ty + 16, 1, 6);
@@ -267,6 +313,9 @@ export class DealerGame extends MiniGame {
       ctx.beginPath(); ctx.moveTo(nx - 8, ty - 14); ctx.lineTo(nx + 8, ty - 14); ctx.lineTo(nx, ty - 3); ctx.closePath(); ctx.fill();
       ctx.restore();
       ctx.restore();
+
+      // "2x" label next to bullseye on the track
+      this.label(ctx, '2x', tx + (cur.target / 100) * tw, ty + 30, 10, PAL.gold, 'center');
 
       // countdown ring
       const cdc = this.countdown < 3 ? PAL.red : PAL.gold;
@@ -298,7 +347,11 @@ export class DealerGame extends MiniGame {
 
     if (this.phase === 'result') {
       const r = this.results[this.results.length - 1];
-      this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 112, r.hit ? PAL.gold : PAL.red, 38);
+      if (r.bullseye) {
+        this.banner(ctx, `BULLSEYE!  2x  +${fmtMoney(r.amount)}`, 112, PAL.gold, 42);
+      } else {
+        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 112, r.hit ? PAL.gold : PAL.red, 38);
+      }
       ctx.save(); ctx.font = `italic 19px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(r.quip, GW / 2, 542); ctx.restore();
     }

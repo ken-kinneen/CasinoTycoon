@@ -24,7 +24,7 @@ export function quip(msg, ms = 5000) {
   bubbleTimer = setTimeout(() => b.classList.add('hidden'), ms);
 }
 
-const STAT_ICON = { machines: 'machine', tables: 'cards', trafficPerMin: 'walk', cardConversion: 'card', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', stackSize: 'muscle', cashTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
+const STAT_ICON = { machines: 'machine', tables: 'cards', trafficPerMin: 'walk', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', stackSize: 'muscle', cashTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
 
 export class HUD {
   constructor(game, customers) {
