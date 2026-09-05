@@ -84,8 +84,8 @@ export class CasinoWorld {
     const floor = M.box(W, 0.12, D, has('carpet') ? M.texMat(T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]), { roughness: 0.9 }) : M.texMat(carpetTex, { roughness: 0.9 }), 0, 0.06, 0);
     floor.receiveShadow = true; add(floor);
     // marble walkway from the door to the tables + a runner outside
-    const marble = M.mat(0xa8a098, { roughness: 0.55, metalness: 0.02, flatShading: false });
-    add(M.box(3.4, 0.13, 6, marble, 0, 0.065, D / 2 - 3)); add(M.box(3.6, 0.02, 6.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.45, flatShading: false }), 0, 0.125, D / 2 - 3).translateY(-0.01));
+    const marble = M.texMat(T.marbleTexture('#a09888', '#787068', [1, 2]), { roughness: 0.6, metalness: 0.02, envMapIntensity: 0.1 });
+    add(M.box(3.4, 0.13, 6, marble, 0, 0.065, D / 2 - 3)); add(M.box(3.6, 0.02, 6.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.5, flatShading: false }), 0, 0.125, D / 2 - 3).translateY(-0.01));
     add(M.box(3, 0.05, 6, M.mat(0x8b0000, { roughness: 0.9 }), 0, 0.17, D / 2 + 3.2)); // red carpet outside
     // walls
     const wallMat = M.texMat(T.wallTexture(P.wall[0], P.wall[1], [W / 4, 1]), { roughness: 0.85 });

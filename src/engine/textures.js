@@ -178,6 +178,46 @@ export function textTexture(text, { color = '#ffcc00', font = 'bold 120px Impact
   }, { wrap: false });
 }
 
+/** Marble floor: warm stone with subtle veining so it doesn't reflect IBL as a flat slab. */
+export function marbleTexture(base = '#a09888', vein = '#787068', repeat = [2, 3]) {
+  return canvasTex(`marble|${base}|${vein}`, 512, 512, (ctx, w, h) => {
+    ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+    const rnd = seeded(42);
+    // subtle noise to break up uniformity
+    for (let i = 0; i < 8000; i++) {
+      const v = rnd() * 0.12;
+      ctx.fillStyle = `rgba(0,0,0,${v})`;
+      ctx.fillRect(rnd() * w, rnd() * h, 2 + rnd() * 3, 2 + rnd() * 3);
+    }
+    for (let i = 0; i < 4000; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${rnd() * 0.06})`;
+      ctx.fillRect(rnd() * w, rnd() * h, 2, 2);
+    }
+    // veining
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 12; i++) {
+      ctx.strokeStyle = vein;
+      ctx.lineWidth = 1 + rnd() * 2;
+      ctx.globalAlpha = 0.15 + rnd() * 0.2;
+      ctx.beginPath();
+      let x = rnd() * w, y = rnd() * h;
+      ctx.moveTo(x, y);
+      const steps = 6 + Math.floor(rnd() * 10);
+      for (let s = 0; s < steps; s++) {
+        x += (rnd() - 0.5) * 80;
+        y += 20 + rnd() * 40;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // tile edge lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 2;
+    ctx.strokeRect(4, 4, w - 8, h - 8);
+    ctx.beginPath(); ctx.moveTo(w / 2, 4); ctx.lineTo(w / 2, h - 4); ctx.stroke();
+  }, { repeat });
+}
+
 /** Marquee bulb strip (for chase-light animation via texture offset). */
 export function bulbStripTexture(on = '#fff2b0', off = '#4a3a20') {
   return canvasTex(`bulbs|${on}|${off}`, 256, 32, (ctx, w, h) => {

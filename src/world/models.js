@@ -13,8 +13,8 @@ export function mat(color, opts = {}) {
   return matCache.get(key);
 }
 export function glow(color, intensity = 1.2, opts = {}) { return mat(color, { emissive: color, emissiveIntensity: intensity, roughness: 0.4, ...opts }); }
-export const GOLD = () => mat(0xe8b923, { metalness: 0.85, roughness: 0.28, flatShading: false });
-export const CHROME = () => mat(0xd8dde6, { metalness: 0.9, roughness: 0.22, flatShading: false });
+export const GOLD = () => mat(0xe8b923, { metalness: 0.85, roughness: 0.28, flatShading: false, envMapIntensity: 0.3 });
+export const CHROME = () => mat(0xb8bcc6, { metalness: 0.85, roughness: 0.32, flatShading: false, envMapIntensity: 0.25 });
 export const BLACK_GLOSS = () => mat(0x0c0c12, { metalness: 0.3, roughness: 0.25, flatShading: false });
 export function texMat(map, opts = {}) { return new THREE.MeshStandardMaterial({ map, roughness: 0.8, metalness: 0.02, ...opts }); }
 
@@ -147,12 +147,12 @@ export function makeDealerTable(feltColor = '#0f5a3a', logo = 'VV') {
   g.add(box(2.6, 0.06, 1.3, mat(0x1a0e08), 0, 0.03, 0.2));
   // chip rack + shoe + cards
   g.add(box(0.9, 0.08, 0.22, BLACK_GLOSS(), 0, 0.98, -0.05));
-  const chipCols = [0xff3333, 0x2b6bff, 0x111111, 0x2ecc71, 0xffffff];
-  for (let i = 0; i < 6; i++) g.add(cyl(0.05, 0.05, 0.08, mat(chipCols[i % 5], { roughness: 0.3 }), -0.35 + i * 0.14, 1.04, -0.05, 10));
+  const chipCols = [0xff3333, 0x2b6bff, 0x111111, 0x2ecc71, 0xe0ddd5];
+  for (let i = 0; i < 6; i++) g.add(cyl(0.05, 0.05, 0.08, mat(chipCols[i % 5], { roughness: 0.4, envMapIntensity: 0.15 }), -0.35 + i * 0.14, 1.04, -0.05, 10));
   g.add(box(0.28, 0.12, 0.2, BLACK_GLOSS(), 0.9, 1.0, 0.0));
-  for (let i = 0; i < 4; i++) { const c = box(0.16, 0.005, 0.22, mat(0xd8d0c0, { roughness: 0.85 }), -0.6 + i * 0.35, 0.96, 0.55); c.rotation.y = (Math.random() - 0.5) * 0.5; g.add(c); }
+  for (let i = 0; i < 4; i++) { const c = box(0.16, 0.005, 0.22, mat(0xd8d0c0, { roughness: 0.85, envMapIntensity: 0.05 }), -0.6 + i * 0.35, 0.96, 0.55); c.rotation.y = (Math.random() - 0.5) * 0.5; g.add(c); }
   // scattered chips on the felt
-  for (let i = 0; i < 8; i++) g.add(cyl(0.05, 0.05, 0.02 + Math.random() * 0.08, mat(chipCols[i % 5], { roughness: 0.3 }), (Math.random() - 0.5) * 2.2, 0.98, 0.3 + Math.random() * 0.7, 10));
+  for (let i = 0; i < 8; i++) g.add(cyl(0.05, 0.05, 0.02 + Math.random() * 0.08, mat(chipCols[i % 5], { roughness: 0.4, envMapIntensity: 0.15 }), (Math.random() - 0.5) * 2.2, 0.98, 0.3 + Math.random() * 0.7, 10));
   // stools along the arc
   for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); const st = makeStool(); st.position.set(Math.cos(a) * 2.0, 0, Math.sin(a) * 1.65); g.add(st); }
   // lamp over the table

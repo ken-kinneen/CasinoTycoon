@@ -8,7 +8,7 @@ export function createRenderer(canvas) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   return renderer;
 }
@@ -21,7 +21,7 @@ export function createScene(renderer) {
   // a faint environment map gives every glossy surface (floors, chrome, gold) a sheen
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.22;
+  scene.environmentIntensity = 0.12;
   pmrem.dispose();
 
   const hemi = new THREE.HemisphereLight(0x4a3a8a, 0x1a0a14, 0.9);

@@ -54,7 +54,7 @@ const AMBIENT_QUIPS = [
   'I don\'t gamble. I own gambling.',
 ];
 
-const MOODS = { duck: { bloomStrength: 0.75, vignette: 0.6, warmth: 0.07 }, rat: { bloomStrength: 0.85, vignette: 0.55, warmth: 0.05 }, diablo: { bloomStrength: 1.0, vignette: 0.5, warmth: 0.09 } };
+const MOODS = { duck: { bloomStrength: 0.45, vignette: 0.6, warmth: 0.07 }, rat: { bloomStrength: 0.55, vignette: 0.55, warmth: 0.05 }, diablo: { bloomStrength: 0.65, vignette: 0.5, warmth: 0.09 } };
 
 function rebuildWorld({ keepCustomers = true } = {}) {
   const def = game.casinoDef;
