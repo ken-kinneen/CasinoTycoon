@@ -58,6 +58,8 @@ function freshState() {
     lifetimeCustomers: 0,
     playTime: 0,
     won: false,
+    playerName: 'Victor Vane',
+    casinoNames: {},           // { duck: 'My Casino', ... } — overrides per casino
     playerX: null,             // saved player position (null = use default)
     playerZ: null,
   };
@@ -94,6 +96,7 @@ class GameState {
         this.s = { ...freshState(), ...data };
         this.s.skills = { ...freshState().skills, ...(data.skills || {}) };
         this.s.casinoUpgrades = { ...freshState().casinoUpgrades, ...(data.casinoUpgrades || {}) };
+        this.s.casinoNames = { ...freshState().casinoNames, ...(data.casinoNames || {}) };
       }
     } catch (e) { this.s = freshState(); }
   }
@@ -106,6 +109,11 @@ class GameState {
 
   // ---- derived stats ----------------------------------------------------
   get casinoDef() { return CASINOS[this.s.casino]; }
+
+  casinoDisplayName(index) {
+    const c = CASINOS[index !== undefined ? index : this.s.casino];
+    return this.s.casinoNames[c.id] || c.name;
+  }
 
   /** Collect every active effect list, optionally with an extra hypothetical set. */
   activeEffects(extra = []) {

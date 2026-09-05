@@ -1,7 +1,7 @@
 // Customers: spawned by walk-in traffic or successful ad cards, walk in through
 // the door, find a machine or table seat, spend money into the hopper, and leave.
 import * as THREE from 'three';
-import { makeCustomer, animatePerson } from './people.js';
+import { makeCustomer, animatePerson, applyDifficultyTint } from './people.js';
 
 export const TYPE_INFO = {
   drunk:   { label: 'Drunk',   spend: 1.2, margin: 8, bet: 60,  speed: 1.2 },
@@ -9,6 +9,27 @@ export const TYPE_INFO = {
   sharp:   { label: 'Sharp',   spend: 0.7, margin: 2, bet: 200, speed: 1.8 },
   whale:   { label: 'Whale',   spend: 4.0, margin: 4, bet: 800, speed: 1.3 },
 };
+
+export const DIFFICULTY_TIERS = {
+  easy:   { label: 'Easy',   color: '#3ddc84', dealerMarginMul: 1.5, dealerSpeedMul: 0.7, betMul: 0.6, channelMul: 1.4, stayMul: 1.2 },
+  medium: { label: 'Medium', color: '#f5c542', dealerMarginMul: 1.0, dealerSpeedMul: 1.0, betMul: 1.0, channelMul: 1.0, stayMul: 1.0 },
+  hard:   { label: 'Hard',   color: '#ff4d5e', dealerMarginMul: 0.55, dealerSpeedMul: 1.5, betMul: 1.8, channelMul: 0.65, stayMul: 0.8 },
+};
+
+const DIFFICULTY_WEIGHTS = {
+  drunk:   { easy: 0.70, medium: 0.25, hard: 0.05 },
+  regular: { easy: 0.40, medium: 0.45, hard: 0.15 },
+  sharp:   { easy: 0.05, medium: 0.35, hard: 0.60 },
+  whale:   { easy: 0.05, medium: 0.40, hard: 0.55 },
+};
+
+export function rollDifficulty(type) {
+  const w = DIFFICULTY_WEIGHTS[type];
+  const r = Math.random();
+  if (r < w.easy) return 'easy';
+  if (r < w.easy + w.medium) return 'medium';
+  return 'hard';
+}
 
 export class CustomerManager {
   constructor(scene, world, game, effects) {
@@ -47,13 +68,15 @@ export class CustomerManager {
     const st = this.game.stats;
     if (this.customers.length >= st.capacity) return false;
     const type = this.rollType();
+    const difficulty = rollDifficulty(type);
     const group = makeCustomer(type);
+    applyDifficultyTint(group, difficulty);
     const w = this.world;
     group.position.copy(w.spawnPoint);
     group.position.x += (Math.random() - 0.5) * 3;
     this.scene.add(group);
     const c = {
-      group, type, info: TYPE_INFO[type],
+      group, type, difficulty, info: TYPE_INFO[type],
       state: 'entering', path: [], seat: null, machine: null, table: null,
       useTimer: 0, walkT: Math.random() * 10, stuck: 0,
       speed: TYPE_INFO[type].speed * (0.85 + Math.random() * 0.3),
@@ -141,7 +164,7 @@ export class CustomerManager {
         else { c.stuck += dt; if (c.stuck > 8) this.leave(c); else { g.rotation.y += dt; } }
       } else if (c.state === 'walking') {
         c.state = 'using';
-        c.useTimer = st.stayTime * (0.7 + Math.random() * 0.6) * (c.type === 'whale' ? 1.4 : 1);
+        c.useTimer = st.stayTime * (0.7 + Math.random() * 0.6) * (c.type === 'whale' ? 1.4 : 1) * DIFFICULTY_TIERS[c.difficulty].stayMul;
         if (c.machine) g.rotation.y = Math.atan2(c.machine.pos.x - g.position.x, c.machine.pos.z - g.position.z); else g.lookAt(c.table.pos.x, g.position.y, c.table.pos.z);
         g.rotation.z = 0;
       } else if (c.state === 'using') {

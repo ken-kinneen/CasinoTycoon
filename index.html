@@ -53,10 +53,7 @@
       <button class="round-btn" id="btn-ledger" title="Ledger (U)"><span class="ico-slot" id="ico-ledger"></span><kbd>U</kbd></button>
       <button class="round-btn" id="btn-stats" title="Stats (Tab)"><span class="ico-slot" id="ico-stats"></span><kbd>Tab</kbd></button>
       <button class="round-btn" id="btn-help" title="Help (H)"><span class="ico-slot" id="ico-help"></span><kbd>H</kbd></button>
-      <div class="music-wrap">
-        <button class="round-btn" id="btn-music" title="Music (M)"><span class="ico-slot" id="ico-music"></span><kbd>M</kbd></button>
-        <div class="vol-slider" id="vol-slider"><input type="range" min="0" max="100" id="vol-range"></div>
-      </div>
+      <button class="round-btn" id="btn-settings" title="Settings"><span class="ico-slot" id="ico-settings"></span></button>
     </div>
 
     <!-- toasts -->
@@ -65,7 +62,7 @@
     <!-- owner portrait + speech bubble -->
     <div class="hud-owner">
       <div class="bubble hidden" id="bubble"><span id="bubble-text"></span></div>
-      <div class="portrait frame"><canvas id="portrait" width="160" height="160"></canvas><div class="portrait-name">VICTOR VANE</div><div class="portrait-title" id="portrait-title">Proprietor</div></div>
+      <div class="portrait frame"><canvas id="portrait" width="160" height="160"></canvas><div class="portrait-name" id="portrait-name">VICTOR VANE</div><div class="portrait-title" id="portrait-title">Proprietor</div></div>
     </div>
 
     <!-- interact prompt + hotbar -->
@@ -85,7 +82,7 @@
   <div id="stats-panel" class="panel frame hidden">
     <div class="panel-title">CASINO STATISTICS <span class="dim" id="stats-casino"></span></div>
     <div class="stats-grid" id="stats-casino-grid"></div>
-    <div class="panel-title">VICTOR VANE</div>
+    <div class="panel-title" id="stats-player-name">VICTOR VANE</div>
     <div class="stats-grid" id="stats-player-grid"></div>
     <div class="stats-life" id="stats-life"></div>
   </div>
@@ -136,7 +133,7 @@
         <div class="eyebrow">A GAME ABOUT BEING THE HOUSE</div>
         <h1 class="logo"><span class="logo-top">CASINO</span><span class="logo-main">TYCOON</span></h1>
         <div class="logo-sub neon-flicker">CORRUPTED CASINO OWNER</div>
-        <p class="story">You are <b>Victor Vane</b>. You own <b>The Lucky Duck</b>, a strip-mall casino wedged between a pawn shop and a bail bondsman. It smells like carpet cleaner and regret.</p>
+        <p class="story">You are <b id="intro-name">Victor Vane</b>. You own <b>The Lucky Duck</b>, a strip-mall casino wedged between a pawn shop and a bail bondsman. It smells like carpet cleaner and regret.</p>
         <p class="story">You have <b>$200</b>, four slot machines, and a dream: a cathedral of neon on the Las Vegas strip. Between here and there are a lot of other people's pockets.</p>
         <div class="title-actions">
           <button class="btn-gold big" id="intro-start">OPEN THE DOORS</button>
@@ -160,6 +157,37 @@
         <div><b>The dream.</b> Buy the next casino from the Expansion tab. Skills and ad campaigns follow you. Vegas is the goal.</div>
       </div>
       <button class="btn-gold" id="help-close">Understood</button>
+    </div>
+  </div>
+
+  <!-- ================= Settings ================= -->
+  <div id="settings" class="modal hidden">
+    <div class="receipt frame settings-panel">
+      <div class="receipt-head"><span class="receipt-title">Settings</span></div>
+      <div class="settings-grid">
+        <div class="setting-row">
+          <label class="setting-label" for="settings-name">Your Name</label>
+          <input class="setting-input" type="text" id="settings-name" maxlength="24" spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="setting-row">
+          <label class="setting-label" for="settings-casino-name">Casino Name</label>
+          <input class="setting-input" type="text" id="settings-casino-name" maxlength="32" spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="setting-row">
+          <label class="setting-label">Music</label>
+          <div class="setting-control">
+            <button class="setting-toggle" id="settings-music-toggle"><span class="ico-slot" id="ico-settings-music"></span><span id="settings-music-label">ON</span></button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label class="setting-label" for="settings-vol">Volume</label>
+          <div class="setting-control setting-vol-wrap">
+            <input type="range" min="0" max="100" id="settings-vol" class="setting-slider" />
+            <span class="setting-vol-num" id="settings-vol-num">30%</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn-gold" id="settings-close">Back to the floor</button>
     </div>
   </div>
 

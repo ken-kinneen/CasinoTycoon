@@ -8,7 +8,7 @@ const $ = id => document.getElementById(id);
 
 const BUY_QUIPS = ['Money well spent. Their money.', 'Every purchase is an investment in someone else\'s misery.', 'I\'m not a monster. I\'m a businessman. Same thing, better suits.', 'The ledger balances. Morally? Different ledger.', 'Sign here, here, and where it says "victim".', 'That\'s the sound of progress. And a little screaming.'];
 const TAB_META = {
-  casino: { heading: 'Casino Upgrades', intro: (g, list, owned) => `Improvements for ${g.casinoDef.name}. ${owned}/${list.length} installed. Each casino has its own set.` },
+  casino: { heading: 'Casino Upgrades', intro: (g, list, owned) => `Improvements for ${g.casinoDisplayName()}. ${owned}/${list.length} installed. Each casino has its own set.` },
   ads: { heading: 'Advertising', intro: (g, list, owned) => `Getting people through the door. ${owned}/${list.length} campaigns running. Advertising follows you to every casino.` },
   skills: { heading: 'My Skills', intro: () => 'Five ways to become a worse person. Each path has 5 levels and changes how Victor looks.' },
   awards: { heading: 'Awards', intro: (g, list, owned) => `Monuments to yourself. ${owned}/${list.length}. "Cosmetic." They still pull numbers.` },
@@ -110,7 +110,7 @@ export class Ledger {
         div.className = `card casino-card ${['rare', 'epic', 'legendary'][i]} ${owned ? 'owned' : ''} ${current ? 'current' : ''}`;
         const b = c.base;
         div.innerHTML = `
-          <div class="card-head"><div class="card-icon">${icon(['building', 'building', 'tower'][i])}</div><div class="card-title"><div class="card-name">${c.name}</div><div class="card-tier">CASINO ${i + 1} OF 3${current ? ' · YOU ARE HERE' : owned ? ' · OWNED' : ''}</div></div></div>
+          <div class="card-head"><div class="card-icon">${icon(['building', 'building', 'tower'][i])}</div><div class="card-title"><div class="card-name">${g.casinoDisplayName(i)}</div><div class="card-tier">CASINO ${i + 1} OF 3${current ? ' · YOU ARE HERE' : owned ? ' · OWNED' : ''}</div></div></div>
           <div class="card-body">
             <div class="tagline">“${c.tagline}”</div>
             <div class="stat-strip">

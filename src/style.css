@@ -74,12 +74,6 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .round-btn kbd { transform: scale(0.85); }
 .round-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 16px rgba(245,197,66,0.35); }
 .round-btn.muted { opacity: 0.4; border-color: rgba(245,197,66,0.15); }
-.music-wrap { position: relative; }
-.vol-slider { position: absolute; right: 60px; top: 50%; transform: translateY(-50%); background: var(--panel); border: 1px solid rgba(245,197,66,0.35); border-radius: 20px; padding: 6px 14px; backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-.music-wrap:hover .vol-slider, .vol-slider:hover, .vol-slider.pinned { opacity: 1; pointer-events: auto; }
-.vol-slider input[type="range"] { -webkit-appearance: none; appearance: none; width: 100px; height: 4px; background: var(--line); border-radius: 2px; outline: none; cursor: pointer; }
-.vol-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
-.vol-slider input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
 
 #toasts { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; width: 460px; }
 .toast { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold); padding: 8px 14px; border-radius: 4px; font-size: 13px; width: 100%; animation: toastin 0.25s ease-out; backdrop-filter: blur(8px); box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
@@ -221,6 +215,24 @@ button.buy.owned { background: #1f4a30; color: #8ff0b8; }
 .card.casino-card .stat-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12px; }
 .card.casino-card .stat-strip div { display: flex; justify-content: space-between; }
 .card.casino-card.current { box-shadow: 0 0 0 1px var(--gold), 0 0 30px rgba(245,197,66,0.2); }
+
+/* ---- settings ------------------------------------------------------------------ */
+.settings-panel { width: min(480px, 94vw); padding: 26px 30px; display: flex; flex-direction: column; gap: 18px; background: var(--panel-solid); }
+.settings-grid { display: flex; flex-direction: column; gap: 16px; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setting-label { font: 16px var(--display); letter-spacing: 2px; color: var(--gold); flex-shrink: 0; }
+.setting-input { flex: 1; min-width: 0; background: #1c1226; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font: 600 15px var(--body); color: var(--text); outline: none; transition: border-color 0.15s; }
+.setting-input:focus { border-color: var(--gold); box-shadow: 0 0 8px rgba(245,197,66,0.25); }
+.setting-control { display: flex; align-items: center; gap: 10px; }
+.setting-toggle { display: flex; align-items: center; gap: 8px; background: rgba(245,197,66,0.08); border: 1px solid rgba(245,197,66,0.35); color: var(--gold); padding: 6px 14px; border-radius: 6px; font: 600 13px var(--body); letter-spacing: 1px; transition: all 0.12s; }
+.setting-toggle .ico-slot { width: 20px; height: 20px; }
+.setting-toggle:hover { background: rgba(245,197,66,0.15); }
+.setting-toggle.muted { opacity: 0.45; border-color: rgba(245,197,66,0.15); }
+.setting-vol-wrap { flex: 1; display: flex; align-items: center; gap: 10px; }
+.setting-slider { -webkit-appearance: none; appearance: none; flex: 1; height: 4px; background: var(--line); border-radius: 2px; outline: none; cursor: pointer; }
+.setting-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
+.setting-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
+.setting-vol-num { font: 600 13px var(--body); color: var(--dim); min-width: 36px; text-align: right; }
 
 /* ---- minigame ------------------------------------------------------------------ */
 #minigame { position: fixed; inset: 0; background: rgba(4, 2, 8, 0.86); display: flex; align-items: center; justify-content: center; z-index: 15; }

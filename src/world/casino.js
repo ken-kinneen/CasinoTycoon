@@ -134,13 +134,14 @@ export class CasinoWorld {
     }
     // facade neon + marquee bulbs + blade sign
     const signW = Math.min(W - 2, 18);
-    const sign = M.makeNeonSign(def.name.toUpperCase().replace(', LAS VEGAS', ''), '#' + def.signColor.toString(16).padStart(6, '0'), signW, { intensity: 30 });
+    const displayName = game.casinoDisplayName();
+    const sign = M.makeNeonSign(displayName.toUpperCase().replace(', LAS VEGAS', ''), '#' + def.signColor.toString(16).padStart(6, '0'), signW, { intensity: 30 });
     sign.position.set(0, H + 2.2, D / 2 + 0.35); add(sign);
     this.animated.push({ type: 'neon', obj: sign, t: Math.random() * 10, flick: (def.id === 'duck' && !has('neon')) ? 0.9 : 0.12 });
     add(M.box(signW + 1, signW * 0.26 + 0.8, 0.2, M.mat(0x0a0a0e, { roughness: 0.4 }), 0, H + 2.2, D / 2 + 0.2));
     const bulbFrame = new THREE.Mesh(new THREE.PlaneGeometry(signW + 1, 0.16), new THREE.MeshBasicMaterial({ map: T.bulbStripTexture(), transparent: true, toneMapped: false }));
     bulbFrame.position.set(0, H + 2.2 + signW * 0.13 + 0.3, D / 2 + 0.31); add(bulbFrame); add(bulbFrame.clone().translateY(-(signW * 0.26 + 0.6)));
-    if (has('namelights')) { const nl = M.makeNeonSign('★ VICTOR VANE PRESENTS ★', '#ff44aa', Math.min(W - 2, 14), { intensity: 20 }); nl.position.set(0, H + 2.2 + signW * 0.13 + 1.2, D / 2 + 0.35); add(nl); this.animated.push({ type: 'neon', obj: nl, t: 3, flick: 0.1 }); }
+    if (has('namelights')) { const nlName = game.s.playerName ? game.s.playerName.toUpperCase() : 'VICTOR VANE'; const nl = M.makeNeonSign(`★ ${nlName} PRESENTS ★`, '#ff44aa', Math.min(W - 2, 14), { intensity: 20 }); nl.position.set(0, H + 2.2 + signW * 0.13 + 1.2, D / 2 + 0.35); add(nl); this.animated.push({ type: 'neon', obj: nl, t: 3, flick: 0.1 }); }
     if (def.id !== 'duck') { const blade = M.makeNeonSign('CASINO', '#ffffff', 4.5, { intensity: 14 }); blade.position.set(W / 2 + 0.45, 3.6, D / 2 - 3); blade.rotation.y = Math.PI / 2; blade.rotation.z = Math.PI / 2; add(blade); this.animated.push({ type: 'neon', obj: blade, t: 1, flick: 0.1 }); }
 
     // =====================================================================
@@ -219,7 +220,8 @@ export class CasinoWorld {
     const span = (nTables - 1) * 5;
     for (let i = 0; i < nTables; i++) {
       const x = 4 - span / 2 + i * 5;
-      const t = M.makeDealerTable(P.felt, 'VV'); t.position.set(x, 0.12, tableZ); add(t);
+      const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
+      const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, tableZ); add(t);
       this.addCollider(x, tableZ, 3.4, 2.6);
       const seats = [];
       for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, tableZ + Math.sin(a) * 1.95)); }
@@ -266,7 +268,7 @@ export class CasinoWorld {
     // =====================================================================
     if (has('bus')) { const b = M.makeBus(0xffcc00, 'LUCKY DUCK · KIDS RIDE FREE*'); b.position.set(-W / 2 - 6, 0, D / 2 + 13.5); add(b); this.animated.push({ type: 'bus', obj: b, t: 0, z: D / 2 + 13.5, range: W + 110 }); }
     if (has('shuttle')) { const s = M.makeBus(0xeeeeee, 'SUNSET ACRES → CASINO (one way)'); s.position.set(W / 2 + 9, 0, D / 2 + 8.6); s.rotation.y = 0; add(s); }
-    if (has('billboard')) { const bb = M.makeBillboard('VICTOR VANE SAYS: YOU WILL WIN*', '*results not typical. or possible.'); bb.position.set(W / 2 + 14, 0, D / 2 - 4); bb.rotation.y = -0.5; add(bb); }
+    if (has('billboard')) { const bbName = game.s.playerName ? game.s.playerName.toUpperCase() : 'VICTOR VANE'; const bb = M.makeBillboard(`${bbName} SAYS: YOU WILL WIN*`, '*results not typical. or possible.'); bb.position.set(W / 2 + 14, 0, D / 2 - 4); bb.rotation.y = -0.5; add(bb); }
     if (has('tower')) { const t = M.makeTower(0x2a0c14); t.position.set(0, 0, -D / 2 - 6); add(t); this.animated.push({ type: 'neon', obj: t.userData.sign, t: 0, flick: 0.05 }); }
     if (has('jet')) { const j = M.makeJet(); j.position.set(W / 2 + 16, 6, -8); j.rotation.y = 0.4; add(j); this.animated.push({ type: 'jet', obj: j, t: 0 }); }
 

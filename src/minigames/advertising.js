@@ -1,6 +1,7 @@
 // Advertising: Operation-style. Guide an ad card from your hand into a
 // passer-by's pocket through a winding gap without touching the fabric.
 import { MiniGame, GW, GH, PAL } from './base.js';
+import { DIFFICULTY_TIERS, rollDifficulty } from '../world/customers.js';
 
 const JACKETS = [
   { coat: '#4a3a24', dark: '#2e2214', trim: '#6b5334' },
@@ -31,27 +32,47 @@ function catmull(points, samples = 14) {
 }
 
 export class AdvertisingGame extends MiniGame {
-  constructor(game) {
+  /** @param {object} [victim] - Pre-selected victim from street: { type, difficulty, name } */
+  constructor(game, victim) {
     super('SLIP THE ADS');
     this.game = game;
     this.timeLeft = game.stats.cardTime;
     this.totalTime = this.timeLeft;
-    this.halfWidth = 26 * game.stats.cardWidth;
+    this.baseHalfWidth = 26 * game.stats.cardWidth;
+    this.halfWidth = this.baseHalfWidth;
     this.deposited = 0; this.busted = 0;
     this.holding = false;
     this.flash = 0; this.msg = ''; this.msgT = 0; this.msgGood = true;
     this.sparks = [];
     this.pop = 0;
+    this.markDifficulty = 'medium';
+    this.markTier = DIFFICULTY_TIERS.medium;
+    this.chosenVictim = victim || null;
     this.newTarget();
   }
 
   newTarget() {
-    // random winding channel from the start (bottom-left) to a pocket (upper-right area)
+    // use the pre-selected victim for the first target, then random afterwards
+    if (this.chosenVictim) {
+      this.markDifficulty = this.chosenVictim.difficulty;
+      this.who = this.chosenVictim.name;
+      this.chosenVictim = null;
+    } else {
+      const types = ['regular', 'drunk', 'sharp', 'whale'];
+      const markType = types[Math.floor(Math.random() * types.length)];
+      this.markDifficulty = rollDifficulty(markType);
+      this.who = NAMES[Math.floor(Math.random() * NAMES.length)];
+    }
+    this.markTier = DIFFICULTY_TIERS[this.markDifficulty];
+    this.halfWidth = this.baseHalfWidth * this.markTier.channelMul;
+
     const pts = [{ x: 140, y: 500 }];
-    const n = 3 + Math.floor(Math.random() * 3);
+    const baseN = 3 + Math.floor(Math.random() * 3);
+    const n = this.markDifficulty === 'hard' ? baseN + 2 : this.markDifficulty === 'easy' ? Math.max(2, baseN - 1) : baseN;
     for (let i = 1; i <= n; i++) {
       const t = i / (n + 1);
-      pts.push({ x: 140 + t * 480 + (Math.random() - 0.5) * 140, y: 500 - t * 300 + (Math.random() - 0.5) * 220 });
+      const wobble = this.markDifficulty === 'hard' ? 180 : this.markDifficulty === 'easy' ? 100 : 140;
+      pts.push({ x: 140 + t * 480 + (Math.random() - 0.5) * wobble, y: 500 - t * 300 + (Math.random() - 0.5) * (wobble * 1.5) });
     }
     pts.push({ x: 660 + Math.random() * 60, y: 170 + Math.random() * 60 });
     this.path = catmull(pts);
@@ -59,7 +80,6 @@ export class AdvertisingGame extends MiniGame {
     this.jacket = JACKETS[Math.floor(Math.random() * JACKETS.length)];
     this.skin = SKINS[Math.floor(Math.random() * SKINS.length)];
     this.hairSeed = Math.random();
-    this.who = NAMES[Math.floor(Math.random() * NAMES.length)];
     this.holding = false;
   }
 
@@ -236,10 +256,17 @@ export class AdvertisingGame extends MiniGame {
     this.readout(ctx, 44, 104, 'planted', String(this.deposited), PAL.green);
     this.readout(ctx, 150, 104, 'caught', String(this.busted), this.busted ? PAL.red : PAL.dim);
 
-    this.panel(ctx, GW - 258, 78, 234, 92, { accent: PAL.gold });
-    this.label(ctx, 'the mark', GW - 238, 100, 11, PAL.dim);
-    this.text(ctx, this.who, GW - 238, 122, 17, PAL.gold, 'left', undefined, '600');
-    this.text(ctx, `${Math.round(this.game.stats.cardConversion * 100)}% of cards become a guest`, GW - 238, 150, 12, PAL.dim, 'left', undefined, '500');
+    this.panel(ctx, GW - 258, 78, 234, 92, { accent: this.markTier.color });
+    this.label(ctx, 'the mark', GW - 238, 96, 11, PAL.dim);
+    this.text(ctx, this.who, GW - 238, 116, 17, PAL.gold, 'left', undefined, '600');
+    // difficulty badge
+    ctx.save();
+    ctx.fillStyle = this.rgba(this.markTier.color, 0.18);
+    this.roundRect(ctx, GW - 238, 130, 62, 18, 4); ctx.fill();
+    ctx.strokeStyle = this.rgba(this.markTier.color, 0.6); ctx.lineWidth = 1; ctx.stroke();
+    this.label(ctx, this.markTier.label, GW - 207, 139, 10, this.markTier.color, 'center');
+    ctx.restore();
+    this.text(ctx, `${Math.round(this.game.stats.cardConversion * 100)}% of cards become a guest`, GW - 238, 156, 12, PAL.dim, 'left', undefined, '500');
 
     if (this.msgT > 0) this.banner(ctx, this.msg, GH - 52, this.msgGood ? PAL.green : PAL.red, 26, Math.min(1, this.msgT * 2));
     else this.label(ctx, "don't touch the fabric", GW / 2, GH - 40, 12, PAL.dim, 'center');

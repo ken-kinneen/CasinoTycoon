@@ -77,7 +77,7 @@ export function makeCustomer(type = 'regular') {
   return g;
 }
 
-/** The owner, Victor Vane. `skills` = {sleight, back, poker, tongue, feet} levels. */
+/** The owner character. `skills` = {sleight, back, poker, tongue, feet} levels. */
 export function makeOwner(skills = {}) {
   const g = new THREE.Group();
   const skin = '#e0ac69';
@@ -152,6 +152,25 @@ export function makeOwner(skills = {}) {
   return g;
 }
 
+const PED_NAMES = [
+  'a tourist', 'a nurse off shift', 'a retiree', 'a pastor', 'a bus driver',
+  'a student', 'a bride-to-be', 'a tax inspector', 'someone\'s grandmother',
+  'a birthday boy', 'a man who "quit"', 'a jogger', 'a divorcee',
+  'a pawn shop regular', 'an off-duty cop', 'a hungover groom',
+];
+const PED_TYPES = ['regular', 'drunk', 'regular', 'regular', 'sharp', 'whale', 'drunk', 'regular'];
+
+/** Street pedestrian with randomised appearance and a type/name for targeting. */
+export function makePedestrian() {
+  const type = PED_TYPES[Math.floor(Math.random() * PED_TYPES.length)];
+  const name = PED_NAMES[Math.floor(Math.random() * PED_NAMES.length)];
+  const g = makeCustomer(type);
+  g.userData.pedType = type;
+  g.userData.pedName = name;
+  g.userData.isPedestrian = true;
+  return g;
+}
+
 /** Bouncer: a very large guest in black with an earpiece. */
 export function makeBouncer() {
   const g = makeCustomer('sharp');
@@ -159,6 +178,20 @@ export function makeBouncer() {
   g.userData.head.add(sph(0.03, mat(0x111111), 0.2, 0.0, 0.05, 6));
   g.userData.head.add(cyl(0.008, 0.008, 0.25, mat(0x111111), 0.2, -0.15, 0.02, 4));
   return g;
+}
+
+/** Subtle difficulty indicator above the customer's head. */
+export function applyDifficultyTint(group, difficulty) {
+  const colors = { easy: 0x3ddc84, medium: 0xf5c542, hard: 0xff4d5e };
+  const color = colors[difficulty] || colors.medium;
+  const indicator = new THREE.Mesh(
+    G('diffDot', () => new THREE.SphereGeometry(0.06, 6, 6)),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, toneMapped: false })
+  );
+  indicator.position.set(0, 1.88, 0);
+  group.add(indicator);
+  group.userData.diffIndicator = indicator;
+  group.userData.difficulty = difficulty;
 }
 
 /** Shared idle/walk animation for a person group. */

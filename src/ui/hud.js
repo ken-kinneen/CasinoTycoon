@@ -36,7 +36,7 @@ export class HUD {
     // inject icons
     const put = (id, name) => { const e = $(id); if (e) e.innerHTML = ICONS[name]; };
     put('ico-hopper', 'vault'); put('ico-guests', 'people'); put('ico-heat', 'flame');
-    put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help'); put('ico-music', 'music');
+    put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help'); put('ico-settings', 'gear'); put('ico-settings-music', 'music');
     put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger');
     document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = ICONS[e.dataset.ico]; });
     this.drawPortrait();
@@ -96,7 +96,7 @@ export class HUD {
     if (this.acc < 0.15) return;
     this.acc = 0;
     const g = this.game, st = g.stats;
-    $('hud-casino').textContent = g.casinoDef.name.replace(', Las Vegas', '');
+    $('hud-casino').textContent = g.casinoDisplayName().replace(', Las Vegas', '');
     $('hud-casino-index').textContent = `CASINO ${g.s.casino + 1} OF 3${g.s.casino === 2 ? ' · LAS VEGAS' : ''}`;
     $('hud-emblem').textContent = ['LD', 'GR', 'PD'][g.s.casino];
     const cap = st.hopperCap * (st.machines + st.tables);
@@ -114,7 +114,7 @@ export class HUD {
     const next = CASINOS.findIndex((c, i) => !g.s.ownedCasinos.includes(i));
     const goal = $('hud-goal');
     if (next === -1) { $('goal-label').innerHTML = `<span>VEGAS ACHIEVED</span><span>${icon('crown')}</span>`; $('goal-fill').style.width = '100%'; $('goal-nums').textContent = `Lifetime take ${fmtMoney(g.s.lifetimeEarned)}`; }
-    else { const c = CASINOS[next]; $('goal-label').innerHTML = `<span>NEXT: ${c.name.replace(', Las Vegas', '').toUpperCase()}</span><span>${Math.min(100, Math.floor(g.s.money / c.price * 100))}%</span>`; $('goal-fill').style.width = `${Math.min(100, g.s.money / c.price * 100)}%`; $('goal-nums').textContent = `${fmtMoney(g.s.money)} / ${fmtMoney(c.price)}`; }
+    else { const c = CASINOS[next]; $('goal-label').innerHTML = `<span>NEXT: ${g.casinoDisplayName(next).replace(', Las Vegas', '').toUpperCase()}</span><span>${Math.min(100, Math.floor(g.s.money / c.price * 100))}%</span>`; $('goal-fill').style.width = `${Math.min(100, g.s.money / c.price * 100)}%`; $('goal-nums').textContent = `${fmtMoney(g.s.money)} / ${fmtMoney(c.price)}`; }
     if (!this.statsPanel.classList.contains('hidden')) this.renderStats();
   }
 
@@ -133,7 +133,7 @@ export class HUD {
 
   renderStats() {
     const g = this.game, st = g.stats;
-    $('stats-casino').textContent = g.casinoDef.name;
+    $('stats-casino').textContent = g.casinoDisplayName();
     const grid = (keys) => keys.map(k => `<div class="k">${icon(STAT_ICON[k] || 'star')}${STAT_META[k].label}</div><div class="v">${STAT_META[k].fmt(st[k])}</div>`).join('');
     $('stats-casino-grid').innerHTML = grid(CASINO_STAT_KEYS) + `<div class="k">${icon('people')}Guests inside</div><div class="v">${this.customers.count}</div><div class="k">${icon('vault')}Cash in hoppers</div><div class="v">${fmtMoney(g.s.machineCash)}</div>`;
     $('stats-player-grid').innerHTML = grid(PLAYER_STAT_KEYS);

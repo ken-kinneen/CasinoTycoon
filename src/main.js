@@ -12,6 +12,7 @@ import { AdvertisingGame } from './minigames/advertising.js';
 import { CashRunGame } from './minigames/cashrun.js';
 import { DealerGame } from './minigames/dealer.js';
 import { fmtMoney } from './minigames/base.js';
+import { PedestrianManager } from './world/pedestrians.js';
 import * as music from './audio/music.js';
 
 const $ = id => document.getElementById(id);
@@ -28,11 +29,13 @@ const customers = new CustomerManager(scene, world, game, effects);
 const player = new Player(scene, camera, game);
 const hud = new HUD(game, customers);
 const ledger = new Ledger(game, () => {});
+const pedMgr = new PedestrianManager(scene, world);
 ledger.onHide = () => { modalOpen = false; };
 
 let started = false;
 let activeGame = null;
 let modalOpen = true; // intro is open
+let pickingMark = false;
 let inspectionTimer = 90;
 let quipTimer = 30;
 let saveTimer = 10;
@@ -74,6 +77,8 @@ function rebuildWorld({ keepCustomers = true } = {}) {
   for (const h of hoppers) h.cash = Math.min(game.stats.hopperCap, each);
   game.s.machineCash = hoppers.reduce((a, h) => a + h.cash, 0);
   world.collide(player.pos, 0.4);
+  pedMgr.world = world;
+  pedMgr.clearAll();
   refreshZoneRings();
 }
 
@@ -82,7 +87,7 @@ game.on('casino', () => {
   player.teleport(world.doorInside.x, world.doorInside.z - 1);
   player.rebuildModel();
   if (!started) return;
-  toast(`Welcome to ${game.casinoDef.name}.`, 'good');
+  toast(`Welcome to ${game.casinoDisplayName()}.`, 'good');
   quip(game.s.casino === 2 ? 'Vegas. I\'m home.' : 'Bigger floor. Bigger hoppers. Bigger everything.');
 });
 game.on('upgrade', u => { if (u.model) rebuildWorld(); });
@@ -116,21 +121,63 @@ function start() {
   }
 }
 
-function updateMusicBtn() { $('btn-music').classList.toggle('muted', music.isMuted()); }
-updateMusicBtn();
+function updatePlayerName() {
+  const name = game.s.playerName;
+  $('portrait-name').textContent = name.toUpperCase();
+  $('stats-player-name').textContent = name.toUpperCase();
+  $('intro-name').textContent = name;
+}
+updatePlayerName();
 
 if (hasSave) start();
 $('intro-start').onclick = start;
-$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
+$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); updatePlayerName(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
 $('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; };
 $('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; };
 $('btn-ledger').onclick = () => toggleLedger();
 $('btn-stats').onclick = () => hud.toggleStats();
 $('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; };
-$('btn-music').onclick = () => { music.toggleMute(); updateMusicBtn(); };
-const volRange = $('vol-range');
-volRange.value = Math.round(music.getVolume() * 100);
-volRange.oninput = () => { music.setVolume(volRange.value / 100); };
+
+// ---- settings screen ----------------------------------------------------------
+function updateSettingsUI() {
+  $('settings-music-toggle').classList.toggle('muted', music.isMuted());
+  $('settings-music-label').textContent = music.isMuted() ? 'OFF' : 'ON';
+  $('settings-vol').value = Math.round(music.getVolume() * 100);
+  $('settings-vol-num').textContent = `${Math.round(music.getVolume() * 100)}%`;
+}
+function openSettings() {
+  $('settings-name').value = game.s.playerName;
+  $('settings-casino-name').value = game.casinoDisplayName();
+  $('settings-casino-name').placeholder = game.casinoDef.name;
+  updateSettingsUI();
+  $('settings').classList.remove('hidden');
+  modalOpen = true;
+}
+function closeSettings() {
+  let changed = false;
+  const rawName = $('settings-name').value.trim();
+  if (rawName && rawName !== game.s.playerName) {
+    game.s.playerName = rawName;
+    updatePlayerName();
+    changed = true;
+  }
+  const rawCasino = $('settings-casino-name').value.trim();
+  const cid = game.casinoDef.id;
+  const defaultName = game.casinoDef.name;
+  const newCasinoName = rawCasino || defaultName;
+  if (newCasinoName !== game.casinoDisplayName()) {
+    if (newCasinoName === defaultName) delete game.s.casinoNames[cid];
+    else game.s.casinoNames[cid] = newCasinoName;
+    changed = true;
+  }
+  if (changed) { game.save(); rebuildWorld(); }
+  $('settings').classList.add('hidden');
+  modalOpen = false;
+}
+$('btn-settings').onclick = () => { if (!started || activeGame) return; if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!modalOpen) openSettings(); };
+$('settings-close').onclick = closeSettings;
+$('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
+$('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
 document.querySelectorAll('.hot').forEach(h => h.onclick = () => { if (!started || modalOpen || activeGame) return; const k = h.dataset.key; if (k === 'office') return toggleLedger('casino'); jumpTo(k); startActivity(k); });
 
 function jumpTo(key) {
@@ -153,28 +200,54 @@ function showWin() {
     <p>Palazzo Diablo is yours. A cathedral of neon, forty floors of no checkout desk, and a volcano that scares the insurance guy.</p>
     <div class="row"><span>Lifetime take</span><span class="big">${fmtMoney(game.s.lifetimeEarned)}</span></div>
     <div class="row"><span>Guests fleeced</span><b>${game.s.lifetimeCustomers}</b></div>
-    <p>The dream was never the casino. The dream was the next one. There are 15 more upgrades in this building and your name isn't in lights yet.</p>
+    <p>The dream was never the casino. The dream was the next one. There are 15 more upgrades in this building and ${game.s.playerName}'s name isn't in lights yet.</p>
     <div class="quip">"They said I'd never make it. They were right. I took it."</div>`, 'VEGAS');
+}
+
+// ---- victim selection (advertising) -------------------------------------------
+function enterPickMode() {
+  if (pickingMark || activeGame || modalOpen) return;
+  pickingMark = true;
+  pedMgr.setPicking(true);
+  hud.setPrompt('Approach a mark and press F', 'advertising');
+  toast('Pick your victim. Walk the sidewalk and press F near someone.', 'good');
+  quip(['Fresh meat on the sidewalk. Pick a good one.', 'Time to choose a victim. I mean, a "valued future guest."', 'So many wallets. So little time.'][Math.floor(Math.random() * 3)]);
+}
+function exitPickMode() {
+  pickingMark = false;
+  pedMgr.setPicking(false);
+  hud.setPrompt(null, null);
+}
+function pickMark() {
+  const ped = pedMgr.highlighted;
+  if (!ped) { toast('Get closer to someone on the sidewalk.', 'bad'); return; }
+  const victim = { type: ped.type, difficulty: ped.difficulty, name: ped.name };
+  exitPickMode();
+  launchAdGame(victim);
+}
+function launchAdGame(victim) {
+  player.enabled = false;
+  const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
+  activeGame = new AdvertisingGame(game, victim);
+  activeGame.onDone = finish(res => {
+    let converted = 0;
+    for (let i = 0; i < res.deposited; i++) if (Math.random() < game.stats.cardConversion) converted++;
+    customers.queue(converted);
+    showResult('Ads slipped', `<div class="row"><span>Cards planted</span><b>${res.deposited}</b></div><div class="row"><span>Marks who noticed</span><b>${res.busted}</b></div><div class="row"><span>Guests on their way</span><span class="big">${converted}</span></div><div class="quip">"${converted === 0 ? 'Nobody? Tough crowd. Tighter grip next time.' : converted >= 5 ? 'A whole busload. Somebody ring the dinner bell.' : 'They\'ll come. They always come.'}"</div>`, converted ? 'HOOKED' : 'MISSED');
+  });
+  activeGame.open(`Click the card, guide it through the gap into the pocket. ${Math.round(game.stats.cardTime)} seconds.`);
 }
 
 // ---- activities ---------------------------------------------------------------
 function startActivity(key) {
   if (activeGame || modalOpen) return;
   if (key === 'office') { toggleLedger('casino'); return; }
+  if (key === 'advertising') { enterPickMode(); return; }
   if (key === 'cashrun' && game.s.machineCash < 1) { toast('The hoppers are empty. Get some guests on the machines first.', 'bad'); quip('Nothing to haul. Get people in here.'); return; }
   if (key === 'dealer' && !customers.tablePlayers().length) { toast('Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.', 'bad'); quip('An empty table. My least favourite kind.'); return; }
   player.enabled = false;
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
-  if (key === 'advertising') {
-    activeGame = new AdvertisingGame(game);
-    activeGame.onDone = finish(res => {
-      let converted = 0;
-      for (let i = 0; i < res.deposited; i++) if (Math.random() < game.stats.cardConversion) converted++;
-      customers.queue(converted);
-      showResult('Ads slipped', `<div class="row"><span>Cards planted</span><b>${res.deposited}</b></div><div class="row"><span>Marks who noticed</span><b>${res.busted}</b></div><div class="row"><span>Guests on their way</span><span class="big">${converted}</span></div><div class="quip">"${converted === 0 ? 'Nobody? Tough crowd. Tighter grip next time.' : converted >= 5 ? 'A whole busload. Somebody ring the dinner bell.' : 'They\'ll come. They always come.'}"</div>`, converted ? 'HOOKED' : 'MISSED');
-    });
-    activeGame.open(`Click the card, guide it through the gap into the pocket. ${Math.round(game.stats.cardTime)} seconds.`);
-  } else if (key === 'cashrun') {
+  if (key === 'cashrun') {
     activeGame = new CashRunGame(game);
     activeGame.onDone = finish(res => {
       customers.drainHoppers(res.banked);
@@ -198,11 +271,16 @@ function startActivity(key) {
 // ---- keys ---------------------------------------------------------------------
 window.addEventListener('keydown', e => {
   if (!started || activeGame) return;
+  if (pickingMark) {
+    if (e.code === 'Escape') { exitPickMode(); toast('Nevermind. The marks can wait.', 'bad'); }
+    else if (e.code === 'KeyF') pickMark();
+    return;
+  }
   if (e.code === 'KeyU') { if (!modalOpen || ledger.open) toggleLedger(); }
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; } }
-  else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
-  else if (e.code === 'KeyM') { music.toggleMute(); updateMusicBtn(); }
+  else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
+  else if (e.code === 'KeyM') { music.toggleMute(); updateSettingsUI(); }
   else if (e.code === 'KeyF') { if (currentZone && !modalOpen) startActivity(currentZone.key); }
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
   else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
@@ -232,8 +310,27 @@ function frame() {
   const dt = Math.min(0.05, clock.getDelta());
   time += dt;
   window.__activeGame = activeGame;
+  if (started) pedMgr.update(dt, player.pos);
   if (started && !activeGame && !modalOpen) {
     player.enabled = true;
+    if (pickingMark) {
+      const ped = pedMgr.highlighted;
+      if (ped) {
+        const tier = ped.difficulty.charAt(0).toUpperCase() + ped.difficulty.slice(1);
+        hud.setPrompt(`[F] Slip a card to ${ped.name} (${tier})`, 'advertising');
+      } else {
+        hud.setPrompt('Walk up to a passerby and press F  ·  ESC to cancel', 'advertising');
+      }
+    } else {
+      currentZone = null; let best = Infinity;
+      for (const z of Object.values(world.zones)) { const d = player.pos.distanceTo(z.pos); if (d < z.r && d < best) { best = d; currentZone = z; } }
+      hud.setPrompt(currentZone ? currentZone.label : null, currentZone ? (currentZone.key === 'office' ? 'office' : currentZone.key) : null);
+    }
+    for (const g of zoneRings) { const near = currentZone && Math.abs(g.position.x - currentZone.pos.x) < 0.01 && Math.abs(g.position.z - currentZone.pos.z) < 0.01; g.userData.ring.material.opacity = (near ? 0.9 : 0.45) + Math.sin(time * 3) * 0.15; g.userData.inner.material.opacity = near ? 0.16 : 0.06; g.rotation.y = time * 0.3; }
+  } else if (started) {
+    player.enabled = false;
+  }
+  if (started) {
     game.s.playTime += dt;
     customers.update(dt);
     const st = game.stats;
@@ -256,13 +353,6 @@ function frame() {
     if (quipTimer <= 0) { quipTimer = 40 + Math.random() * 30; quip(AMBIENT_QUIPS[Math.floor(Math.random() * AMBIENT_QUIPS.length)]); }
     saveTimer -= dt;
     if (saveTimer <= 0) { saveTimer = 10; game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; game.save(); }
-    // zones: nearest ring the owner stands in
-    currentZone = null; let best = Infinity;
-    for (const z of Object.values(world.zones)) { const d = player.pos.distanceTo(z.pos); if (d < z.r && d < best) { best = d; currentZone = z; } }
-    hud.setPrompt(currentZone ? currentZone.label : null, currentZone ? (currentZone.key === 'office' ? 'office' : currentZone.key) : null);
-    for (const g of zoneRings) { const near = currentZone && Math.abs(g.position.x - currentZone.pos.x) < 0.01 && Math.abs(g.position.z - currentZone.pos.z) < 0.01; g.userData.ring.material.opacity = (near ? 0.9 : 0.45) + Math.sin(time * 3) * 0.15; g.userData.inner.material.opacity = near ? 0.16 : 0.06; g.rotation.y = time * 0.3; }
-  } else {
-    player.enabled = false;
   }
   if (started) { player.update(dt, world); hud.update(dt); }
   else { camera.position.set(Math.sin(time * 0.08) * 16, 5.5, world.D / 2 + 15); camera.lookAt(0, 3, world.D / 2 - 4); }
@@ -280,4 +370,4 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('beforeunload', () => { if (started) { game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; } game.save(); });
 
-window.__casino = { game, world, customers, player, effects, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };
+window.__casino = { game, world, customers, player, effects, pedMgr, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };

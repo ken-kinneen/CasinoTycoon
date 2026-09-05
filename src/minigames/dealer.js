@@ -2,7 +2,7 @@
 // house number sweeps 0-100. Hit SPACE / click to lock it in. Land inside the
 // gambler's margin of error and the house takes the bet.
 import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
-import { TYPE_INFO } from '../world/customers.js';
+import { TYPE_INFO, DIFFICULTY_TIERS } from '../world/customers.js';
 
 const QUIPS = {
   win: ['"Better luck next time." (there is no next time)', '"House wins. House always wins."', '"Oh no, so close!" (it wasn\'t close)', '"Would you like a complimentary drink?"'],
@@ -35,15 +35,17 @@ export class DealerGame extends MiniGame {
     const st = this.game.stats;
     const c = this.players[this.hand];
     const info = TYPE_INFO[c.type];
+    const diff = c.difficulty || 'medium';
+    const tier = DIFFICULTY_TIERS[diff];
     const betScale = Math.sqrt(st.spendPerMin / 40);
     this.current = {
-      type: c.type, label: info.label,
-      margin: info.margin + st.dealerMargin,
-      bet: Math.round(info.bet * st.dealerBet * betScale),
+      type: c.type, difficulty: diff, label: info.label, tierLabel: tier.label, tierColor: tier.color,
+      margin: Math.max(1, Math.round((info.margin + st.dealerMargin) * tier.dealerMarginMul)),
+      bet: Math.round(info.bet * st.dealerBet * betScale * tier.betMul),
       target: 5 + Math.floor(Math.random() * 91),
     };
     this.countdown = 10;
-    this.speed = 35 * st.dealerSpeed;
+    this.speed = 35 * st.dealerSpeed * tier.dealerSpeedMul;
     this.number = Math.random() * 100; this.dir = 1;
     this.locked = null;
   }
@@ -179,8 +181,16 @@ export class DealerGame extends MiniGame {
     ctx.fillStyle = tint; ctx.fillRect(-16, 14, 32, 12);
     ctx.restore();
 
-    this.label(ctx, `hand ${this.hand + 1} of ${this.players.length}`, 118, 110, 11, PAL.dim);
-    this.neon(ctx, `${cur.label} gambler`, 118, 136, 24, tint, 'left', 12, 1);
+    this.label(ctx, `hand ${this.hand + 1} of ${this.players.length}`, 118, 100, 11, PAL.dim);
+    this.neon(ctx, `${cur.label} gambler`, 118, 126, 24, tint, 'left', 12, 1);
+    // difficulty badge
+    ctx.save();
+    ctx.fillStyle = this.rgba(cur.tierColor, 0.18);
+    this.roundRect(ctx, 118, 140, 62, 20, 4); ctx.fill();
+    ctx.strokeStyle = this.rgba(cur.tierColor, 0.6); ctx.lineWidth = 1; ctx.stroke();
+    this.label(ctx, cur.tierLabel, 149, 150, 10, cur.tierColor, 'center');
+    ctx.restore();
+
     this.label(ctx, 'margin', 118, 172, 10, PAL.dim);
     this.text(ctx, `±${cur.margin}`, 118, 194, 22, PAL.bone, 'left');
     this.label(ctx, 'bet', 214, 172, 10, PAL.dim);
@@ -280,8 +290,9 @@ export class DealerGame extends MiniGame {
     if (this.phase === 'intro') {
       const a = Math.min(1, (1.6 - this.phaseT) * 4);
       ctx.save(); ctx.globalAlpha = a;
-      this.neon(ctx, `A ${cur.label.toLowerCase()} sits down`, GW / 2, 250, 44, PAL.bone, 'center', 20, 3);
-      this.text(ctx, `They're betting ${fmtMoney(cur.bet)} — land within ±${cur.margin} of the number.`, GW / 2, 306, 18, PAL.gold, 'center', undefined, '500');
+      this.neon(ctx, `A ${cur.label.toLowerCase()} sits down`, GW / 2, 240, 44, PAL.bone, 'center', 20, 3);
+      this.neon(ctx, cur.tierLabel.toUpperCase(), GW / 2, 282, 26, cur.tierColor, 'center', 14, 2);
+      this.text(ctx, `They're betting ${fmtMoney(cur.bet)} — land within ±${cur.margin} of the number.`, GW / 2, 320, 18, PAL.gold, 'center', undefined, '500');
       ctx.restore();
     }
 

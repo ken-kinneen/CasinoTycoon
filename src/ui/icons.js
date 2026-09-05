@@ -56,6 +56,7 @@ export const ICONS = {
   whale:     P('<path d="M3 13c2-5 8-7 14-5l4-3-1 5c1 3-1 6-5 7H8c-3 0-5-2-5-4z"/><circle cx="15" cy="11" r="1" fill="currentColor"/>'),
   beer:      P('<path d="M6 5h9v14H6z"/><path d="M15 8h3a2 2 0 0 1 0 6h-3"/><path d="M6 5c1-2 8-2 9 0"/>'),
   shades:    P('<path d="M2 10h20"/><path d="M4 10l1 5h5l1-4M19 10l-1 5h-5l-1-4"/>'),
+  gear:      P('<circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'),
 };
 
 export function icon(name, cls = '') { return `<span class="ico ${cls}">${ICONS[name] || ICONS.star}</span>`; }
