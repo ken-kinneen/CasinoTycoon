@@ -227,8 +227,8 @@ export class CasinoWorld {
     // columns (rat + diablo) — flanking the gaming floor, along the edges of the slot zone
     if (tier > 0) {
       const colStyle = tier === 2 ? 'ionic' : 'doric';
-      const colXL = -W / 2 + 7;
-      const colXR = W / 2 - 3;
+      const colXL = -W / 2 + 3.5;
+      const colXR = W / 2 - 2.5;
       const colZStart = -D / 2 + 4;
       const colZEnd = D / 2 - 7;
       const colCount = Math.max(2, Math.round((colZEnd - colZStart) / 6));
@@ -394,31 +394,40 @@ export class CasinoWorld {
     if (has('roulette')) { const r = M.makeRouletteTable(); r.position.set(W / 2 - 3.2, 0.12, D / 2 - 7); r.rotation.y = Math.PI / 2; add(r); this.addCollider(W / 2 - 3.2, D / 2 - 7, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel }); }
 
     // =====================================================================
-    // SLOT BANKS (back-to-back rows) with a corridor down the right side
+    // SLOT BANKS (back-to-back rows) — spread across the gaming floor
     // =====================================================================
     const nMachines = Math.round(st.machines);
-    const xMin = -W / 2 + 8, xMax = W / 2 - 4;
+    const officeEdge = -W / 2 + 7.5;
+    const xMin = tier === 0 ? -W / 2 + 3.5 : officeEdge;
+    const xMax = W / 2 - 3.5;
     this.corridorX = W / 2 - 2.0;
     const zFirst = -D / 2 + 3.2, zLast = tableZ - 4.6;
-    const maxBanks = Math.max(1, Math.floor((zLast - zFirst) / 4.2) + 1);
-    const nBanks = Math.max(1, Math.min(maxBanks, Math.ceil(nMachines / 10)));
-    const maxPerRow = Math.max(1, Math.floor((xMax - xMin) / 1.2));
+    const bankSpacing = 3.8;
+    const maxBanks = Math.max(1, Math.floor((zLast - zFirst) / bankSpacing) + 1);
+    const maxPerRow = Math.max(2, Math.floor((xMax - xMin) / 1.2));
+    // spread machines across multiple banks; cap row width so we use vertical space too
+    const rowCap = Math.min(maxPerRow, Math.max(4, Math.ceil(maxPerRow * 0.6)));
+    const nBanks = Math.max(1, Math.min(maxBanks, Math.ceil(nMachines / (2 * rowCap))));
     const perRow = Math.min(maxPerRow, Math.max(3, Math.ceil(nMachines / (2 * nBanks))));
     let idx = 0;
     for (let b = 0; b < nBanks && idx < nMachines; b++) {
-      const zb = zFirst + b * ((nBanks > 1) ? (zLast - zFirst) / (nBanks - 1) : 0);
-      for (const side of [-1, 1]) { // -1: faces the back wall, +1: faces the door
+      const zb = nBanks === 1
+        ? (zFirst + zLast) / 2
+        : zFirst + b * (zLast - zFirst) / (nBanks - 1);
+      for (const side of [-1, 1]) {
         const count = Math.min(perRow, nMachines - idx); if (count <= 0) break;
-        const rowW = count * 1.2, startX = (xMin + xMax) / 2 - rowW / 2 + 0.6;
+        const spacing = 1.2;
+        const rowW = count * spacing;
+        const startX = xMin + ((xMax - xMin) - rowW) / 2 + spacing / 2;
         for (let i = 0; i < count; i++, idx++) {
-          const m = M.makeSlotMachine(idx); const x = startX + i * 1.2, z = zb + side * 0.45;
+          const m = M.makeSlotMachine(idx); const x = startX + i * spacing, z = zb + side * 0.45;
           m.position.set(x, 0.12, z); m.rotation.y = side === 1 ? 0 : Math.PI; add(m);
           this.machines.push({ group: m, pos: new THREE.Vector3(x, 0, z), usePos: new THREE.Vector3(x, 0, z + side * 0.95), aisleZ: zb + side * 2.1, occupant: null, cash: 0 });
         }
       }
-      this.addCollider((xMin + xMax) / 2, zb, perRow * 1.2 + 0.2, 1.9);
-      // end caps + a planter at each end of the bank
-      for (const s of [-1, 1]) { const p = M.makePlanter(); p.position.set((xMin + xMax) / 2 + s * (perRow * 0.6 + 0.6), 0.12, zb); add(p); }
+      const bankWidth = Math.min(perRow, nMachines) * 1.2 + 0.4;
+      this.addCollider((xMin + xMax) / 2, zb, bankWidth, 1.9);
+      for (const s of [-1, 1]) { const p = M.makePlanter(); p.position.set((xMin + xMax) / 2 + s * (bankWidth / 2 + 0.4), 0.12, zb); add(p); }
     }
     this.backAisleZ = zFirst - 2.1;
 

@@ -58,6 +58,8 @@ function freshState() {
     won: false,
     playerName: 'Victor Vane',
     casinoNames: {},           // { duck: 'My Casino', ... } — overrides per casino
+    godMode: false,
+    openModal: null,           // 'settings' | 'help' | 'ledger:tab' | null
     playerX: null,             // saved player position (null = use default)
     playerZ: null,
   };
@@ -107,6 +109,8 @@ class GameState {
 
   // ---- derived stats ----------------------------------------------------
   get casinoDef() { return CASINOS[this.s.casino]; }
+  get godMode() { return this.s.godMode; }
+  set godMode(v) { this.s.godMode = !!v; }
 
   casinoDisplayName(index) {
     const c = CASINOS[index !== undefined ? index : this.s.casino];
@@ -173,9 +177,9 @@ class GameState {
     this.emit('money', { amount: n, source });
   }
   spend(n) {
-    if (this.s.money < n) return false;
-    this.s.money -= n;
-    this.emit('money', { amount: -n, source: 'spend' });
+    if (!this.godMode && this.s.money < n) return false;
+    if (!this.godMode) this.s.money -= n;
+    this.emit('money', { amount: this.godMode ? 0 : -n, source: 'spend' });
     return true;
   }
 

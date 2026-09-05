@@ -31,11 +31,13 @@ const player = new Player(scene, camera, game);
 const hud = new HUD(game, customers);
 const ledger = new Ledger(game, () => {});
 const pedMgr = new PedestrianManager(scene, world);
-ledger.onHide = () => { modalOpen = false; };
+ledger.onHide = () => { modalOpen = false; setOpenModal(null); };
 
 let started = false;
 let activeGame = null;
 let modalOpen = true; // intro is open
+
+function setOpenModal(key) { game.s.openModal = key || null; game.save(); }
 let nearbyPed = null;
 let inspectionTimer = 90;
 let quipTimer = 30;
@@ -119,7 +121,16 @@ function start() {
     music.start();
     setTimeout(() => quip(hasSave ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
     setTimeout(() => customers.queue(2), 1500);
+    restoreOpenModal();
   }
+}
+
+function restoreOpenModal() {
+  const m = game.s.openModal;
+  if (!m) return;
+  if (m === 'settings') { openSettings(); }
+  else if (m === 'help') { $('help').classList.remove('hidden'); modalOpen = true; }
+  else if (m.startsWith('ledger')) { const tab = m.split(':')[1]; ledger.show(tab); modalOpen = true; }
 }
 
 function updateDisplayNames() {
@@ -134,11 +145,11 @@ updateDisplayNames();
 if (hasSave) start();
 $('intro-start').onclick = start;
 $('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); updateDisplayNames(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
-$('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; };
-$('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; };
+$('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
+$('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
 $('btn-ledger').onclick = () => toggleLedger();
 $('btn-stats').onclick = () => hud.toggleStats();
-$('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; };
+$('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); };
 
 // ---- settings screen ----------------------------------------------------------
 function updateSettingsUI() {
@@ -147,6 +158,10 @@ function updateSettingsUI() {
   $('settings-vol').value = Math.round(music.getVolume() * 100);
   $('settings-vol-num').textContent = `${Math.round(music.getVolume() * 100)}%`;
 }
+function updateGodUI() {
+  $('settings-god').classList.toggle('muted', !game.godMode);
+  $('settings-god-label').textContent = game.godMode ? 'ON' : 'OFF';
+}
 function openSettings() {
   $('settings-name').value = game.s.playerName;
   $('settings-casino-name').value = game.casinoDisplayName();
@@ -154,8 +169,10 @@ function openSettings() {
   $('settings-level').value = game.s.casino;
   $('settings-money').value = Math.floor(game.s.money);
   updateSettingsUI();
+  updateGodUI();
   $('settings').classList.remove('hidden');
   modalOpen = true;
+  setOpenModal('settings');
 }
 function closeSettings() {
   let changed = false;
@@ -195,12 +212,14 @@ function closeSettings() {
   if (changed) { game.save(); rebuildWorld({ keepCustomers: !casinoChanged }); updateDisplayNames(); }
   $('settings').classList.add('hidden');
   modalOpen = false;
+  setOpenModal(null);
 }
 $('btn-settings').onclick = () => { if (!started || activeGame) return; if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!modalOpen) openSettings(); };
 $('settings-close').onclick = closeSettings;
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
 $('settings-dev-toggle').onclick = () => { $('settings-dev').classList.toggle('hidden'); $('settings-dev-toggle').classList.toggle('open'); };
+$('settings-god').onclick = () => { game.godMode = !game.godMode; updateGodUI(); };
 document.querySelectorAll('.hot').forEach(h => h.onclick = () => {
   if (!started || modalOpen || activeGame) return;
   const k = h.dataset.key;
@@ -215,8 +234,8 @@ function jumpTo(key) {
   if (z) player.teleport(z.pos.x, z.pos.z);
 }
 function toggleLedger(tab) {
-  if (ledger.open) { ledger.hide(); modalOpen = false; }
-  else { ledger.show(tab); modalOpen = true; }
+  if (ledger.open) { ledger.hide(); modalOpen = false; setOpenModal(null); }
+  else { ledger.show(tab); modalOpen = true; setOpenModal(`ledger:${tab || ledger.tab}`); }
 }
 function showResult(title, html, stamp = 'PAID') {
   $('result-title').textContent = title;
@@ -296,7 +315,7 @@ window.addEventListener('keydown', e => {
   if (!started || activeGame) return;
   if (e.code === 'KeyU') { if (!modalOpen || ledger.open) toggleLedger(); }
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
-  else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; } }
+  else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); } }
   else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
   else if (e.code === 'KeyM') { music.toggleMute(); updateSettingsUI(); }
   else if (e.code === 'KeyF') {

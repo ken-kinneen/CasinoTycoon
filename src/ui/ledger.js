@@ -72,16 +72,17 @@ export class Ledger {
     const body = this.body; body.innerHTML = '';
     const grid = document.createElement('div'); grid.className = 'cards';
 
+    const afford = (cost) => g.godMode || g.s.money >= cost;
     if (this.tab === 'casino') {
       const list = CASINO_UPGRADES[g.casinoDef.id];
       $('ledger-intro').textContent = TAB_META.casino.intro(g, list, list.filter(u => g.ownsCasinoUpgrade(u.id)).length);
-      for (const u of list) grid.appendChild(this.card(u, list, g.ownsCasinoUpgrade(u.id), g.s.money >= u.cost, () => g.buyCasinoUpgrade(u.id)));
+      for (const u of list) grid.appendChild(this.card(u, list, g.ownsCasinoUpgrade(u.id), afford(u.cost), () => g.buyCasinoUpgrade(u.id)));
     } else if (this.tab === 'ads') {
       $('ledger-intro').textContent = TAB_META.ads.intro(g, AD_UPGRADES, AD_UPGRADES.filter(u => g.ownsAd(u.id)).length);
-      for (const u of AD_UPGRADES) grid.appendChild(this.card(u, AD_UPGRADES, g.ownsAd(u.id), g.s.money >= u.cost, () => g.buyAd(u.id)));
+      for (const u of AD_UPGRADES) grid.appendChild(this.card(u, AD_UPGRADES, g.ownsAd(u.id), afford(u.cost), () => g.buyAd(u.id)));
     } else if (this.tab === 'awards') {
       $('ledger-intro').textContent = TAB_META.awards.intro(g, AWARDS, AWARDS.filter(a => g.ownsAward(a.id)).length);
-      for (const a of AWARDS) grid.appendChild(this.card(a, AWARDS, g.ownsAward(a.id), g.s.money >= a.cost, () => g.buyAward(a.id)));
+      for (const a of AWARDS) grid.appendChild(this.card(a, AWARDS, g.ownsAward(a.id), afford(a.cost), () => g.buyAward(a.id)));
     } else if (this.tab === 'skills') {
       $('ledger-intro').textContent = TAB_META.skills.intro();
       const skillIcons = { sleight: 'hand', back: 'muscle', poker: 'hat', tongue: 'snake', feet: 'shoe' };
@@ -97,9 +98,9 @@ export class Ledger {
             <div class="blurb">“${sk.blurb}”</div>
             <div class="look">Look: ${lvl > 0 ? sk.cosmetic.slice(0, lvl).join(', ') : 'nothing yet'}${lvl < 5 ? ` → next <b>${sk.cosmetic[lvl]}</b>` : ''}</div>
             <div class="effects">${lvl < 5 ? this.deltaHtml(sk.perLevel) : '<div class="fx"><span>Mastered</span><span class="delta good">MAX</span></div>'}</div>
-            <div class="card-foot"><div class="cost ${cost === null ? 'owned' : ''}">${cost === null ? icon('check') + ' Mastered' : fmtMoney(cost)}</div><button class="buy ${lvl >= 5 ? 'owned' : ''}" ${cost === null || g.s.money < cost ? 'disabled' : ''}>${cost === null ? 'Maxed' : g.s.money >= cost ? 'Train' : 'Too poor'}</button></div>
+            <div class="card-foot"><div class="cost ${cost === null ? 'owned' : ''}">${cost === null ? icon('check') + ' Mastered' : fmtMoney(cost)}</div><button class="buy ${lvl >= 5 ? 'owned' : ''}" ${cost === null || !afford(cost) ? 'disabled' : ''}>${cost === null ? 'Maxed' : afford(cost) ? 'Train' : 'Too poor'}</button></div>
           </div>`;
-        if (cost !== null && g.s.money >= cost) div.querySelector('button').onclick = () => { if (g.buySkill(sk.id)) { quip(`${sk.cosmetic[lvl]}. Looking sharp. Feeling sharper.`); this.render(); this.onChange && this.onChange(sk); } };
+        if (cost !== null && afford(cost)) div.querySelector('button').onclick = () => { if (g.buySkill(sk.id)) { quip(`${sk.cosmetic[lvl]}. Looking sharp. Feeling sharper.`); this.render(); this.onChange && this.onChange(sk); } };
         grid.appendChild(div);
       }
     } else if (this.tab === 'expand') {
@@ -118,10 +119,10 @@ export class Ledger {
               <div><span>Walk-ins</span><b>${b.trafficPerMin}/min</b></div><div><span>Spend/guest</span><b>$${b.spendPerMin}/min</b></div>
               <div><span>Hopper cap</span><b>$${b.hopperCap}</b></div><div><span>Prestige</span><b>${b.prestige}</b></div>
             </div>
-            <div class="card-foot"><div class="cost ${owned ? 'owned' : ''}">${owned ? icon('check') + (current ? ' Current' : ' Owned') : fmtMoney(c.price)}</div><button class="buy ${owned ? 'owned' : ''}" ${current || (!owned && g.s.money < c.price) ? 'disabled' : ''}>${current ? 'Here' : owned ? 'Move in' : g.s.money >= c.price ? 'Buy' : 'Too poor'}</button></div>
+            <div class="card-foot"><div class="cost ${owned ? 'owned' : ''}">${owned ? icon('check') + (current ? ' Current' : ' Owned') : fmtMoney(c.price)}</div><button class="buy ${owned ? 'owned' : ''}" ${current || (!owned && !afford(c.price)) ? 'disabled' : ''}>${current ? 'Here' : owned ? 'Move in' : afford(c.price) ? 'Buy' : 'Too poor'}</button></div>
           </div>`;
         const btn = div.querySelector('button');
-        if (!current && (owned || g.s.money >= c.price)) btn.onclick = () => { const ok = owned ? g.moveToCasino(i) : g.buyCasino(i); if (ok) { this.hide(); this.onChange && this.onChange({ casino: i }); } };
+        if (!current && (owned || afford(c.price))) btn.onclick = () => { const ok = owned ? g.moveToCasino(i) : g.buyCasino(i); if (ok) { this.hide(); this.onChange && this.onChange({ casino: i }); } };
         grid.appendChild(div);
       });
     }
