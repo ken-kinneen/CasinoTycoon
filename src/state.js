@@ -9,8 +9,6 @@ const PLAYER_BASE = {
   walkSpeed: 6,
   cardWidth: 1,       // multiplier on the pocket channel width
   cardTime: 30,       // seconds per advertising round
-  stackSize: 80,      // $ per cash stack in the cash run
-  cashTime: 18,       // seconds per cash run
   dealerMargin: 0,    // extra +/- tolerance when dealing
   dealerBet: 1,       // multiplier on bet size at the table
   dealerSpeed: 1,     // multiplier on how fast the number sweeps (lower = slower)
@@ -31,8 +29,6 @@ export const STAT_META = {
   walkSpeed:     { label: 'Walk Speed',         fmt: v => `${v.toFixed(1)} m/s`,               good: +1 },
   cardWidth:     { label: 'Pocket Tolerance',   fmt: v => `x${v.toFixed(2)}`,                  good: +1 },
   cardTime:      { label: 'Ad Round Time',      fmt: v => `${Math.round(v)}s`,                 good: +1 },
-  stackSize:     { label: 'Cash Stack Size',    fmt: v => `$${Math.round(v)}`,                 good: +1 },
-  cashTime:      { label: 'Cash Run Time',      fmt: v => `${Math.round(v)}s`,                 good: +1 },
   dealerMargin:  { label: 'Dealer Margin',      fmt: v => `±${v.toFixed(0)} bonus`,            good: +1 },
   dealerBet:     { label: 'Table Bet Size',     fmt: v => `x${v.toFixed(2)}`,                  good: +1 },
   dealerSpeed:   { label: 'Count Speed',        fmt: v => `x${v.toFixed(2)}`,                  good: -1 },
@@ -40,7 +36,7 @@ export const STAT_META = {
 
 // Which stats show on the casino stats panel (in order).
 export const CASINO_STAT_KEYS = ['machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'hopperCap', 'autoCollect', 'prestige', 'heat'];
-export const PLAYER_STAT_KEYS = ['walkSpeed', 'cardWidth', 'cardTime', 'stackSize', 'cashTime', 'dealerMargin', 'dealerBet', 'dealerSpeed'];
+export const PLAYER_STAT_KEYS = ['walkSpeed', 'cardWidth', 'cardTime', 'dealerMargin', 'dealerBet', 'dealerSpeed'];
 
 function freshState() {
   return {

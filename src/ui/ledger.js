@@ -29,7 +29,7 @@ export class Ledger {
     this.tab = 'casino';
     this.open = false;
     $('ledger-close').onclick = () => this.hide();
-    $('ledger-tabs').querySelectorAll('button').forEach(b => b.onclick = () => { this.tab = b.dataset.tab; this.render(); });
+    $('ledger-tabs').querySelectorAll('button').forEach(b => b.onclick = () => { this.tab = b.dataset.tab; this.render(); this.onTabChange && this.onTabChange(this.tab); });
     game.on('money', () => { if (this.open) $('ledger-money').textContent = fmtMoney(game.s.money); });
   }
   show(tab) { if (tab) this.tab = tab; this.open = true; this.el.classList.remove('hidden'); this.render(); }

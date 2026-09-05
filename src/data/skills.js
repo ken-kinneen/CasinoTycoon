@@ -17,13 +17,13 @@ export const SKILLS = [
   },
   {
     id: 'back',
-    name: 'Strong Back',
+    name: 'Sharp Memory',
     icon: '💪',
-    blurb: 'Hauling cash from the hoppers to the safe. Bigger armfuls, more time.',
-    activity: 'Cash Run',
+    blurb: 'Cracking the vault. A sharper mind means bigger hoppers and fatter stacks.',
+    activity: 'Vault Crack',
     perLevel: [
-      { stat: 'stackSize', mul: 1.35 },
-      { stat: 'cashTime', add: 4 },
+      { stat: 'hopperCap', mul: 1.3 },
+      { stat: 'spendPerMin', mul: 1.08 },
     ],
     cosmetic: ['Rolled sleeves', 'Broader shoulders', 'Weight belt', 'Money bag', 'Two money bags'],
   },

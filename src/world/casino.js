@@ -340,7 +340,7 @@ export class CasinoWorld {
     add(M.textPlane('OFFICE · STAFF ONLY (that means me)', { w: 4.2, h: 0.5, color: '#ffd700', glowColor: '#ffd700' }).translateX(-W / 2 + 3.2).translateY(3.0).translateZ(-D / 2 + 0.22));
     const pl = M.makePlanter(); pl.position.set(-W / 2 + 0.7, 0.12, -D / 2 + 0.8); add(pl);
     this.zones.office = { pos: new THREE.Vector3(ox, 0, oz + 1.3), r: 1.5, label: 'Open the Ledger', key: 'office', icon: 'ledger' };
-    this.zones.safe = { pos: new THREE.Vector3(-W / 2 + 2.9, 0, -D / 2 + 5.6), r: 1.6, label: 'Cash run', key: 'cashrun', icon: 'safe' };
+    this.zones.safe = { pos: new THREE.Vector3(-W / 2 + 2.9, 0, -D / 2 + 5.6), r: 1.6, label: 'Vault crack', key: 'cashrun', icon: 'safe' };
 
     // =====================================================================
     // FEATURES FROM UPGRADES
@@ -375,61 +375,134 @@ export class CasinoWorld {
     if (has('volcano')) { const v = M.makeVolcano(); v.position.set(W / 2 - 5, 0.12, 2); add(v); this.addCollider(W / 2 - 5, 2, 6, 6); this.animated.push({ type: 'volcano', obj: v, t: 0 }); }
 
     // =====================================================================
-    // DEALER TABLES (front-middle)
+    // GAMING FLOOR — real casino layout: central table pit, slot pods
+    // against walls and in sections with separators, clear entrance aisle
     // =====================================================================
+    const officeW = tier === 0 ? 4 : 7;
+    const wallPad = 1.8;
+    this.corridorX = W / 2 - 2.0;
+    const pitCX = officeW / 2;
+    const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
+
+    // --- CENTRAL TABLE PIT: tables in the middle of the room ---
     const nTables = Math.round(st.tables);
-    const tableZ = D / 2 - 6.2;
-    const span = (nTables - 1) * 5;
+    const pitZ = 0;
+    const pitSpacing = Math.min(5.5, (W - officeW - 6) / Math.max(1, nTables));
+    const pitRowW = (nTables - 1) * pitSpacing;
     for (let i = 0; i < nTables; i++) {
-      const x = 4 - span / 2 + i * 5;
-      const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
-      const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, tableZ); add(t);
-      this.addCollider(x, tableZ, 3.4, 2.6);
+      const x = pitCX - pitRowW / 2 + i * pitSpacing;
+      const z = pitZ + ((i % 2) ? 1.5 : -1.5);
+      const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, z); add(t);
+      this.addCollider(x, z, 3.4, 2.6);
       const seats = [];
-      for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, tableZ + Math.sin(a) * 1.95)); }
-      seats.push(new THREE.Vector3(x - 2.2, 0, tableZ + 0.9));
-      this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, tableZ), seats, dealerSpot: new THREE.Vector3(x, 0, tableZ - 1.5), occupants: [], cash: 0, aisleZ: tableZ + 2.6 });
+      for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95)); }
+      seats.push(new THREE.Vector3(x - 2.2, 0, z + 0.9));
+      this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, z), seats, dealerSpot: new THREE.Vector3(x, 0, z - 1.5), occupants: [], cash: 0, aisleZ: z + 2.6 });
     }
     if (this.tables.length) this.zones.dealer = { pos: this.tables[0].dealerSpot.clone(), r: 1.5, label: 'Deal a hand', key: 'dealer', icon: 'cards' };
-    if (has('roulette')) { const r = M.makeRouletteTable(); r.position.set(W / 2 - 3.2, 0.12, D / 2 - 7); r.rotation.y = Math.PI / 2; add(r); this.addCollider(W / 2 - 3.2, D / 2 - 7, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel }); }
+    if (has('roulette')) {
+      const rx = pitCX + pitRowW / 2 + pitSpacing * 0.7;
+      const rz = pitZ;
+      const r = M.makeRouletteTable(); r.position.set(Math.min(rx, W / 2 - 4), 0.12, rz); r.rotation.y = Math.PI / 2; add(r);
+      this.addCollider(r.position.x, rz, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel });
+    }
 
-    // =====================================================================
-    // SLOT BANKS (back-to-back rows) — spread across the gaming floor
-    // =====================================================================
+    // --- SLOT PODS: small clusters of 2-3 against walls and in sections ---
     const nMachines = Math.round(st.machines);
-    const officeEdge = -W / 2 + 7.5;
-    const xMin = tier === 0 ? -W / 2 + 3.5 : officeEdge;
-    const xMax = W / 2 - 3.5;
-    this.corridorX = W / 2 - 2.0;
-    const zFirst = -D / 2 + 3.2, zLast = tableZ - 4.6;
-    const bankSpacing = 3.8;
-    const maxBanks = Math.max(1, Math.floor((zLast - zFirst) / bankSpacing) + 1);
-    const maxPerRow = Math.max(2, Math.floor((xMax - xMin) / 1.2));
-    // spread machines across multiple banks; cap row width so we use vertical space too
-    const rowCap = Math.min(maxPerRow, Math.max(4, Math.ceil(maxPerRow * 0.6)));
-    const nBanks = Math.max(1, Math.min(maxBanks, Math.ceil(nMachines / (2 * rowCap))));
-    const perRow = Math.min(maxPerRow, Math.max(3, Math.ceil(nMachines / (2 * nBanks))));
-    let idx = 0;
-    for (let b = 0; b < nBanks && idx < nMachines; b++) {
-      const zb = nBanks === 1
-        ? (zFirst + zLast) / 2
-        : zFirst + b * (zLast - zFirst) / (nBanks - 1);
-      for (const side of [-1, 1]) {
-        const count = Math.min(perRow, nMachines - idx); if (count <= 0) break;
-        const spacing = 1.2;
-        const rowW = count * spacing;
-        const startX = xMin + ((xMax - xMin) - rowW) / 2 + spacing / 2;
-        for (let i = 0; i < count; i++, idx++) {
-          const m = M.makeSlotMachine(idx); const x = startX + i * spacing, z = zb + side * 0.45;
-          m.position.set(x, 0.12, z); m.rotation.y = side === 1 ? 0 : Math.PI; add(m);
-          this.machines.push({ group: m, pos: new THREE.Vector3(x, 0, z), usePos: new THREE.Vector3(x, 0, z + side * 0.95), aisleZ: zb + side * 2.1, occupant: null, cash: 0 });
+    const podSize = tier === 0 ? 2 : 3;
+    const podLen = podSize * 1.2;
+    const podGap = 1.6;
+    const pods = [];
+
+    // LEFT WALL pods (below office): machines face inward
+    const leftX = -W / 2 + wallPad;
+    const leftZStart = -D / 2 + officeW + 2;
+    const leftZEnd = D / 2 - 5;
+    const leftSpan = leftZEnd - leftZStart;
+    const leftN = Math.max(1, Math.floor(leftSpan / (podLen + podGap)));
+    const leftStep = leftSpan / leftN;
+    for (let p = 0; p < leftN; p++)
+      pods.push({ x: leftX, z: leftZStart + p * leftStep + podLen / 2, face: Math.PI / 2, wall: 'left' });
+
+    // BACK WALL pods: machines face forward
+    const backZ = -D / 2 + wallPad;
+    const backXStart = -W / 2 + officeW + 1.5;
+    const backXEnd = W / 2 - (has('bar') || has('buffet') ? 3.5 : 2);
+    const backSpan = backXEnd - backXStart;
+    const backN = Math.max(1, Math.floor(backSpan / (podLen + podGap)));
+    const backStep = backSpan / backN;
+    for (let p = 0; p < backN; p++)
+      pods.push({ x: backXStart + p * backStep + podLen / 2, z: backZ, face: 0, wall: 'back' });
+
+    // RIGHT WALL pods: machines face inward (skip bar area)
+    const rightX = W / 2 - wallPad;
+    const barEnd = has('bar') || has('buffet') ? -D / 2 + Math.min(7, D * 0.35) + 3 : -D / 2 + 2;
+    const rightZStart = barEnd + 1;
+    const rightZEnd = D / 2 - 5;
+    const rightSpan = rightZEnd - rightZStart;
+    const rightN = Math.max(0, Math.floor(rightSpan / (podLen + podGap)));
+    const rightStep = rightN > 0 ? rightSpan / rightN : 0;
+    for (let p = 0; p < rightN; p++)
+      pods.push({ x: rightX, z: rightZStart + p * rightStep + podLen / 2, face: -Math.PI / 2, wall: 'right' });
+
+    // INTERIOR pods for overflow (larger casinos with many machines)
+    if (nMachines > pods.length * podSize) {
+      const intXStart = -W / 2 + officeW + 3;
+      const intXEnd = W / 2 - 5;
+      const intZ1 = -D / 2 + 5;
+      const intZ2 = D / 2 - 10;
+      const intCols = Math.max(1, Math.floor((intXEnd - intXStart) / 5.5));
+      const intRows = Math.max(1, Math.floor((intZ2 - intZ1) / 4.5));
+      for (let r = 0; r < intRows; r++) {
+        for (let c = 0; c < intCols; c++) {
+          const ix = intXStart + (c + 0.5) * (intXEnd - intXStart) / intCols;
+          const iz = intZ1 + (r + 0.5) * (intZ2 - intZ1) / intRows;
+          if (Math.abs(ix - pitCX) < pitRowW / 2 + 4 && Math.abs(iz - pitZ) < 4) continue;
+          pods.push({ x: ix, z: iz, face: (c % 2) ? Math.PI : 0, wall: 'interior' });
         }
       }
-      const bankWidth = Math.min(perRow, nMachines) * 1.2 + 0.4;
-      this.addCollider((xMin + xMax) / 2, zb, bankWidth, 1.9);
-      for (const s of [-1, 1]) { const p = M.makePlanter(); p.position.set((xMin + xMax) / 2 + s * (bankWidth / 2 + 0.4), 0.12, zb); add(p); }
     }
-    this.backAisleZ = zFirst - 2.1;
+
+    // Place machines into pods (2-3 per pod with a separator at each end)
+    let idx = 0;
+    for (const pod of pods) {
+      if (idx >= nMachines) break;
+      const count = Math.min(podSize, nMachines - idx);
+      const isVert = pod.wall === 'left' || pod.wall === 'right';
+      for (let i = 0; i < count; i++, idx++) {
+        const m = M.makeSlotMachine(idx);
+        let mx, mz;
+        if (isVert) {
+          mx = pod.x;
+          mz = pod.z + i * 1.2;
+          m.rotation.y = pod.face;
+        } else {
+          mx = pod.x + i * 1.2;
+          mz = pod.z;
+          m.rotation.y = pod.face;
+        }
+        m.position.set(mx, 0.12, mz); add(m);
+        const useOffset = pod.wall === 'left' ? 0.95 : pod.wall === 'right' ? -0.95 : pod.face === 0 ? 0.95 : -0.95;
+        const useX = isVert ? mx + useOffset : mx;
+        const useZ = isVert ? mz : mz + useOffset;
+        this.machines.push({ group: m, pos: new THREE.Vector3(mx, 0, mz), usePos: new THREE.Vector3(useX, 0, useZ), aisleZ: isVert ? mz : mz + useOffset * 2, occupant: null, cash: 0 });
+      }
+      // separator: a planter or rope at each end of the pod
+      const sepMat = tier > 0 ? gold : chrome;
+      if (isVert) {
+        const sz1 = pod.z - 0.8, sz2 = pod.z + (count - 1) * 1.2 + 0.8;
+        add(M.cyl(0.15, 0.18, 0.04, sepMat, pod.x, 0.14, sz1, 10));
+        add(M.cyl(0.15, 0.18, 0.04, sepMat, pod.x, 0.14, sz2, 10));
+      } else {
+        const sx1 = pod.x - 0.8, sx2 = pod.x + (count - 1) * 1.2 + 0.8;
+        add(M.cyl(0.15, 0.18, 0.04, sepMat, sx1, 0.14, pod.z, 10));
+        add(M.cyl(0.15, 0.18, 0.04, sepMat, sx2, 0.14, pod.z, 10));
+      }
+      // collider for the pod
+      if (isVert) this.addCollider(pod.x, pod.z + (count - 1) * 0.6, 1.4, count * 1.2 + 0.4);
+      else this.addCollider(pod.x + (count - 1) * 0.6, pod.z, count * 1.2 + 0.4, 1.4);
+    }
+    this.backAisleZ = -D / 2 + 2;
 
     // ashtray stands + a couple of planters near the entrance
     for (const x of [-2.6, 2.6]) { add(M.cyl(0.12, 0.15, 0.9, M.CHROME(), x, 0.57, D / 2 - 1.2, 8)); add(M.cyl(0.18, 0.12, 0.08, M.mat(0x111111), x, 1.05, D / 2 - 1.2, 10)); }
@@ -450,7 +523,7 @@ export class CasinoWorld {
     this.doorInside = new THREE.Vector3(0, 0, D / 2 - 1.6);
     this.doorOutside = new THREE.Vector3(0, 0, D / 2 + 1.6);
     this.spawnPoint = new THREE.Vector3(0, 0, D / 2 + 8);
-    this.aisleZ = tableZ + 2.6;   // front walkway (also the tables' aisle)
+    this.aisleZ = pitZ + 4;   // front walkway (past the table pit)
     const mat = M.textPlane('WELCOME · NO REFUNDS · NO EXITS', { w: 3, h: 0.4, color: '#b89830' }); mat.rotation.x = -Math.PI / 2; mat.position.set(0, 0.14, D / 2 - 0.8); add(mat);
   }
 

@@ -32,6 +32,7 @@ const hud = new HUD(game, customers);
 const ledger = new Ledger(game, () => {});
 const pedMgr = new PedestrianManager(scene, world);
 ledger.onHide = () => { modalOpen = false; setOpenModal(null); };
+ledger.onTabChange = (tab) => { setOpenModal(`ledger:${tab}`); };
 
 let started = false;
 let activeGame = null;
@@ -105,6 +106,8 @@ player.model.visible = false;
 
 // ---- intro / reset ------------------------------------------------------------
 const hasSave = game.s.lifetimeEarned > 0 || game.s.playTime > 0;
+if (hasSave) { $('intro').classList.add('hidden'); }
+else { document.documentElement.classList.remove('has-save'); }
 
 function start() {
   player.model.visible = true;
@@ -219,7 +222,7 @@ $('settings-close').onclick = closeSettings;
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
 $('settings-dev-toggle').onclick = () => { $('settings-dev').classList.toggle('hidden'); $('settings-dev-toggle').classList.toggle('open'); };
-$('settings-god').onclick = () => { game.godMode = !game.godMode; updateGodUI(); };
+$('settings-god').onclick = () => { game.godMode = !game.godMode; game.save(); updateGodUI(); };
 document.querySelectorAll('.hot').forEach(h => h.onclick = () => {
   if (!started || modalOpen || activeGame) return;
   const k = h.dataset.key;
@@ -291,9 +294,9 @@ function startActivity(key) {
       effects.float(player.pos.x, 2.4, player.pos.z, `+${fmtMoney(res.banked)}`, '#ffd700', 1.6);
       if (res.banked > 0) sfx.playRandom('ching', 'triumph', 'chuckle');
       else sfx.play('groan');
-      showResult('Cash run', `<div class="row"><span>Hauled into the safe</span><span class="big">${fmtMoney(res.banked)}</span></div><div class="row"><span>Left in the hoppers</span><b>${fmtMoney(game.s.machineCash)}</b></div><div class="quip">"${res.banked === 0 ? 'Nothing? My back hurts for nothing?' : 'Mine. All mine. Legally mine, mostly.'}"</div>`, res.banked ? 'BANKED' : 'EMPTY');
+      showResult('Vault crack', `<div class="row"><span>Secured in the vault</span><span class="big">${fmtMoney(res.banked)}</span></div><div class="row"><span>Left in the hoppers</span><b>${fmtMoney(game.s.machineCash)}</b></div><div class="quip">"${res.banked === 0 ? 'Couldn\'t remember a single number. Embarrassing.' : 'Cracked it. The money remembers who it belongs to.'}"</div>`, res.banked ? 'CRACKED' : 'LOCKED');
     });
-    activeGame.open(`Drag the stacks into the safe while the door is open. ${Math.round(game.stats.cashTime)} seconds.`);
+    activeGame.open('Memorize each sequence, then enter it back. 5 rounds — each one adds a digit.');
   } else if (key === 'dealer') {
     activeGame = new DealerGame(game, customers.tablePlayers());
     activeGame.onDone = finish(res => {

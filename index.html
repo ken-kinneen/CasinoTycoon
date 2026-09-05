@@ -7,6 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rubik:wght@400;500;600;800&family=Playfair+Display:ital,wght@0,700;1,600;1,700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/src/style.css" />
+  <script>
+    try { if (localStorage.getItem('casino-tycoon-save-v1')) document.documentElement.classList.add('has-save'); } catch(e) {}
+  </script>
+  <style>.has-save #intro { display: none !important; }</style>
 </head>
 <body>
   <canvas id="game"></canvas>
