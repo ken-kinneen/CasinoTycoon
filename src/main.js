@@ -221,12 +221,16 @@ function launchAdGame(ped) {
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
   activeGame = new AdvertisingGame(game, victim);
   activeGame.onDone = finish(res => {
-    let converted = 0;
-    for (let i = 0; i < res.deposited; i++) if (Math.random() < game.stats.cardConversion) converted++;
-    customers.queue(converted);
-    showResult('Ads slipped', `<div class="row"><span>Cards planted</span><b>${res.deposited}</b></div><div class="row"><span>Marks who noticed</span><b>${res.busted}</b></div><div class="row"><span>Guests on their way</span><span class="big">${converted}</span></div><div class="quip">"${converted === 0 ? 'Nobody? Tough crowd. Tighter grip next time.' : converted >= 5 ? 'A whole busload. Somebody ring the dinner bell.' : 'They\'ll come. They always come.'}"</div>`, converted ? 'HOOKED' : 'MISSED');
+    const slipped = res.deposited > 0;
+    const converted = slipped && Math.random() < game.stats.cardConversion ? 1 : 0;
+    if (converted) customers.queue(1);
+    if (slipped) {
+      showResult('Card slipped', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="row"><span>Guest on their way?</span><span class="big">${converted ? 'Yes' : 'No'}</span></div><div class="quip">"${converted ? 'They\'ll come. They always come.' : 'Planted, but they tossed it. Try another.'}"</div>`, converted ? 'HOOKED' : 'PLANTED');
+    } else {
+      showResult('Busted', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="quip">"${['They felt that. Sloppy.', 'Gone. Find someone less alert.', 'Tighter grip next time.'][Math.floor(Math.random() * 3)]}"</div>`, 'BUSTED');
+    }
   });
-  activeGame.open(`Click the card, guide it through the gap into the pocket. ${Math.round(game.stats.cardTime)} seconds.`);
+  activeGame.open(`Guide the card into ${victim.name}'s pocket without touching the fabric.`);
 }
 
 function startActivity(key) {
