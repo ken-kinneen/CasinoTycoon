@@ -36,7 +36,7 @@ export class HUD {
     // inject icons
     const put = (id, name) => { const e = $(id); if (e) e.innerHTML = ICONS[name]; };
     put('ico-hopper', 'vault'); put('ico-guests', 'people'); put('ico-heat', 'flame');
-    put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help');
+    put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help'); put('ico-music', 'music');
     put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger');
     document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = ICONS[e.dataset.ico]; });
     this.drawPortrait();

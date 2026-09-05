@@ -12,6 +12,7 @@ import { AdvertisingGame } from './minigames/advertising.js';
 import { CashRunGame } from './minigames/cashrun.js';
 import { DealerGame } from './minigames/dealer.js';
 import { fmtMoney } from './minigames/base.js';
+import * as music from './audio/music.js';
 
 const $ = id => document.getElementById(id);
 
@@ -109,10 +110,14 @@ function start() {
       player.teleport(world.doorInside.x, world.doorInside.z - 1);
     }
     hud.show();
+    music.start();
     setTimeout(() => quip(hasSave ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
     setTimeout(() => customers.queue(2), 1500);
   }
 }
+
+function updateMusicBtn() { $('btn-music').classList.toggle('muted', music.isMuted()); }
+updateMusicBtn();
 
 if (hasSave) start();
 $('intro-start').onclick = start;
@@ -122,6 +127,10 @@ $('result-close').onclick = () => { $('result').classList.add('hidden'); modalOp
 $('btn-ledger').onclick = () => toggleLedger();
 $('btn-stats').onclick = () => hud.toggleStats();
 $('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; };
+$('btn-music').onclick = () => { music.toggleMute(); updateMusicBtn(); };
+const volRange = $('vol-range');
+volRange.value = Math.round(music.getVolume() * 100);
+volRange.oninput = () => { music.setVolume(volRange.value / 100); };
 document.querySelectorAll('.hot').forEach(h => h.onclick = () => { if (!started || modalOpen || activeGame) return; const k = h.dataset.key; if (k === 'office') return toggleLedger('casino'); jumpTo(k); startActivity(k); });
 
 function jumpTo(key) {
@@ -193,6 +202,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; } }
   else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
+  else if (e.code === 'KeyM') { music.toggleMute(); updateMusicBtn(); }
   else if (e.code === 'KeyF') { if (currentZone && !modalOpen) startActivity(currentZone.key); }
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
   else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
