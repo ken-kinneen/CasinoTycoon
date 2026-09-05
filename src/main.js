@@ -74,6 +74,10 @@ function rebuildWorld({ keepCustomers = true } = {}) {
   if (!keepCustomers) customers.clearAll();
   for (const c of customers.customers) {
     c.machine = null; c.table = null; c.seat = null;
+    c.group.position.y = 0;
+    const u = c.group.userData;
+    if (u.legL) u.legL.rotation.x = 0;
+    if (u.legR) u.legR.rotation.x = 0;
     if (c.state !== 'leaving') { c.state = 'entering'; c.path = []; c.stuck = 0; }
   }
   const hoppers = [...world.machines, ...world.tables];

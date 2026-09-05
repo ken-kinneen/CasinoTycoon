@@ -1,6 +1,7 @@
 // Vault crack: watch the keypad light up a sequence, then enter it from memory.
 // 4 rounds: 3 → 4 → 5 → 6 digits. Bank more the further you get.
 import { MiniGame, GW, GH, fmtMoney, PAL } from './base.js';
+import * as sfx from '../audio/sfx.js';
 
 const ROUNDS = 4;
 const START_LEN = 3;
@@ -103,6 +104,7 @@ export class CashRunGame extends MiniGame {
 
   submitDigit(d) {
     if (this.phase !== 'input') return;
+    sfx.play('keypad', d);
     const idx = this.input.length;
     this.input.push(d);
     this.inputFlash[d] = 0.3;
@@ -178,6 +180,13 @@ export class CashRunGame extends MiniGame {
     }
 
     if (this.phase === 'show') {
+      const cur = this.activeShowDigit();
+      if (cur >= 0 && cur !== this.showIdx) {
+        this.showIdx = cur;
+        sfx.play('keypad', this.sequence[cur]);
+      } else if (cur < 0 && this.showIdx >= 0) {
+        this.showIdx = -1;
+      }
       if (this.phaseT >= this.showDuration()) {
         this.phase = 'input';
         this.phaseT = 0;

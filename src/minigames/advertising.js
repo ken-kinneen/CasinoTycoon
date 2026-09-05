@@ -45,7 +45,9 @@ export class AdvertisingGame extends MiniGame {
     this.who = victim.name;
     this.markDifficulty = victim.difficulty;
     this.markTier = DIFFICULTY_TIERS[victim.difficulty];
-    this.halfWidth = 26 * game.stats.cardWidth * this.markTier.channelMul;
+    this.halfWidth = 26 * 0.825 * game.stats.cardWidth * this.markTier.channelMul;
+    this.cardW = 16;
+    this.cardH = 10;
     this.holding = false;
     this.done = false;
     this.resultTimer = 0;
@@ -120,15 +122,22 @@ export class AdvertisingGame extends MiniGame {
       return;
     }
     if (this.holding) {
-      const d = this.distToPath(this.mouse.x, this.mouse.y);
-      if (Math.hypot(this.mouse.x - this.end.x, this.mouse.y - this.end.y) < 22) {
+      const mx = this.mouse.x, my = this.mouse.y;
+      const cw = this.cardW, ch = this.cardH;
+      const worst = Math.max(
+        this.distToPath(mx - cw, my - ch),
+        this.distToPath(mx + cw, my - ch),
+        this.distToPath(mx - cw, my + ch),
+        this.distToPath(mx + cw, my + ch),
+      );
+      if (Math.hypot(mx - this.end.x, my - this.end.y) < 22) {
         this.success = true; this.done = true; this.resultTimer = 1.8;
         this.msg = `Card slipped in.`; this.msgT = 2; this.msgGood = true;
         this.pop = 1; this.burst(this.end.x, this.end.y, PAL.green, 24);
-      } else if (d > this.halfWidth - 6) {
+      } else if (worst > this.halfWidth - 6) {
         this.success = false; this.done = true; this.resultTimer = 1.8;
         this.flash = 1; this.msg = `They felt that.`; this.msgT = 2; this.msgGood = false;
-        this.burst(this.mouse.x, this.mouse.y, PAL.red, 16);
+        this.burst(mx, my, PAL.red, 16);
       }
     }
   }

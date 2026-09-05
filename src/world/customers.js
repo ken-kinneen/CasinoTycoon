@@ -95,7 +95,9 @@ export class CustomerManager {
     let machine = !table ? w.freeMachine() : null;
     if (!table && !machine) table = w.freeTableSeat();
     if (table) {
-      const seat = table.seats[table.occupants.length];
+      const taken = new Set(table.occupants.map(o => o.seat));
+      const seat = table.seats.find(s => !taken.has(s));
+      if (!seat) return false;
       table.occupants.push(c);
       c.table = table; c.seat = seat; c.spent = 0;
       c.path = w.pathTo(c.group.position, seat, table.aisleZ);
@@ -115,7 +117,7 @@ export class CustomerManager {
     const aisle = c.machine ? c.machine.aisleZ : c.table ? c.table.aisleZ : w.aisleZ;
     if (c.spent > 0 && this.effects) this.effects.float(c.group.position.x, 2.1, c.group.position.z, `+$${Math.round(c.spent)}`, c.type === 'whale' ? '#ffd700' : '#3cb371', c.type === 'whale' ? 1.4 : 1);
     if (c.machine) { c.group.position.y = 0; c.machine.occupant = null; c.machine = null; }
-    if (c.table) { c.table.occupants = c.table.occupants.filter(o => o !== c); c.table = null; }
+    if (c.table) { c.table.occupants = c.table.occupants.filter(o => o !== c); c.table = null; c.seat = null; }
     c.state = 'leaving';
     c.path = w.pathOut(c.group.position, aisle);
   }

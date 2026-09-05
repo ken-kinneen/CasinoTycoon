@@ -218,6 +218,21 @@ const SOUNDS = {
     breath(a, now + 0.18, 0.1, 0.06, 2000, d);
   },
 
+  // DTMF keypad beep — two-tone sine burst like a phone keypad
+  keypad(digit = 0) {
+    const a = ac(), now = a.currentTime, d = a.destination;
+    const ROW = [941, 697, 697, 697, 770, 770, 770, 852, 852, 852];
+    const COL = [1336, 1209, 1336, 1477, 1209, 1336, 1477, 1209, 1336, 1477];
+    const dur = 0.1;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.18, now);
+    g.gain.setValueAtTime(0.18, now + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    g.connect(d);
+    const o1 = a.createOscillator(); o1.type = 'sine'; o1.frequency.value = ROW[digit]; o1.connect(g); o1.start(now); o1.stop(now + dur);
+    const o2 = a.createOscillator(); o2.type = 'sine'; o2.frequency.value = COL[digit]; o2.connect(g); o2.start(now); o2.stop(now + dur);
+  },
+
   // Cash register cha-ching (this one stays non-vocal, it's a prop sound)
   ching() {
     const a = ac(), now = a.currentTime, d = a.destination;
@@ -254,8 +269,8 @@ const SOUNDS = {
  * Play a procedural NPC vocal sound.
  * @param {'happy'|'chuckle'|'groan'|'angry'|'frustrate'|'huff'|'gasp'|'triumph'|'bullseye'|'oof'|'ching'|'murmur'} name
  */
-export function play(name) {
-  try { SOUNDS[name]?.(); } catch {}
+export function play(name, ...args) {
+  try { SOUNDS[name]?.(...args); } catch {}
 }
 
 /** Play a random sound from a list of names. */
