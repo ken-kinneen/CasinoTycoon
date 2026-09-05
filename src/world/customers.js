@@ -11,9 +11,9 @@ export const TYPE_INFO = {
 };
 
 export const DIFFICULTY_TIERS = {
-  easy:   { label: 'Easy',   color: '#3ddc84', dealerMarginMul: 1.0, dealerSpeedMul: 1.0, betMul: 0.6, channelMul: 1.4, stayMul: 1.2 },
+  easy:   { label: 'Easy',   color: '#3ddc84', dealerMarginMul: 1.0, dealerSpeedMul: 1.0, betMul: 0.6, channelMul: 1.15, stayMul: 1.2 },
   medium: { label: 'Medium', color: '#f5c542', dealerMarginMul: 0.7, dealerSpeedMul: 1.0, betMul: 1.0, channelMul: 1.0, stayMul: 1.0 },
-  hard:   { label: 'Hard',   color: '#ff4d5e', dealerMarginMul: 0.4, dealerSpeedMul: 1.0, betMul: 1.8, channelMul: 0.65, stayMul: 0.8 },
+  hard:   { label: 'Hard',   color: '#ff4d5e', dealerMarginMul: 0.4, dealerSpeedMul: 1.0, betMul: 1.8, channelMul: 0.85, stayMul: 0.8 },
 };
 
 const DIFFICULTY_WEIGHTS = {
@@ -203,7 +203,7 @@ export class CustomerManager {
     this.game.s.machineCash = totalHopper;
   }
 
-  /** Take everything from the hoppers (used after a cash run banks it). */
+  /** Take everything from the hoppers (used after a vault crack banks it). */
   drainHoppers(amount) {
     let remaining = amount;
     const all = [...this.world.machines, ...this.world.tables];
