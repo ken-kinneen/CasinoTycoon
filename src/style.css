@@ -233,6 +233,14 @@ button.buy.owned { background: #1f4a30; color: #8ff0b8; }
 .setting-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
 .setting-slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--gold); border: none; box-shadow: 0 0 6px rgba(245,197,66,0.5); cursor: pointer; }
 .setting-vol-num { font: 600 13px var(--body); color: var(--dim); min-width: 36px; text-align: right; }
+.settings-divider { border-top: 1px solid rgba(245,197,66,0.12); margin: 6px 0 2px; }
+.settings-dev-head { font: 600 12px var(--body); letter-spacing: 2px; color: var(--dim); cursor: pointer; user-select: none; padding: 4px 0; transition: color 0.15s; }
+.settings-dev-head:hover { color: var(--gold); }
+#settings-dev-arrow { display: inline-block; transition: transform 0.2s; }
+.settings-dev-head.open #settings-dev-arrow { transform: rotate(90deg); }
+.settings-dev { display: flex; flex-direction: column; gap: 12px; }
+.setting-select { flex: 1; min-width: 0; background: #1c1226; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font: 600 14px var(--body); color: var(--text); outline: none; cursor: pointer; transition: border-color 0.15s; -webkit-appearance: none; appearance: none; }
+.setting-select:focus { border-color: var(--gold); box-shadow: 0 0 8px rgba(245,197,66,0.25); }
 
 /* ---- minigame ------------------------------------------------------------------ */
 #minigame { position: fixed; inset: 0; background: rgba(4, 2, 8, 0.86); display: flex; align-items: center; justify-content: center; z-index: 15; }

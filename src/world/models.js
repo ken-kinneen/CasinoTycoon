@@ -308,6 +308,56 @@ export function makeVelvetRope(len = 3) {
   return g;
 }
 
+export function makeColumn(h = 4.5, style = 'doric') {
+  const g = new THREE.Group();
+  const marble = mat(0xd8d0c8, { roughness: 0.25, metalness: 0.05, flatShading: false });
+  const goldTrim = GOLD();
+  // plinth
+  g.add(box(0.6, 0.18, 0.6, marble, 0, 0.09, 0));
+  g.add(box(0.52, 0.06, 0.52, goldTrim, 0, 0.21, 0));
+  // shaft
+  const shaftH = h - 0.8;
+  g.add(cyl(0.18, 0.2, shaftH, marble, 0, 0.24 + shaftH / 2, 0, 14));
+  // fluting grooves (visual detail)
+  for (let i = 0; i < 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    g.add(box(0.015, shaftH - 0.2, 0.04, mat(0xc0b8aa, { roughness: 0.4 }), Math.cos(a) * 0.19, 0.24 + shaftH / 2, Math.sin(a) * 0.19).rotateY(-a));
+  }
+  // capital
+  if (style === 'ionic') {
+    g.add(box(0.55, 0.12, 0.55, marble, 0, 0.24 + shaftH + 0.06, 0));
+    g.add(box(0.65, 0.08, 0.65, goldTrim, 0, 0.24 + shaftH + 0.16, 0));
+    // volutes (scroll shapes as small cylinders on the sides)
+    for (const sx of [-0.3, 0.3]) g.add(cyl(0.08, 0.08, 0.06, marble, sx, 0.24 + shaftH + 0.06, 0, 10).rotateZ(Math.PI / 2));
+  } else {
+    g.add(box(0.5, 0.1, 0.5, marble, 0, 0.24 + shaftH + 0.05, 0));
+    g.add(box(0.58, 0.06, 0.58, goldTrim, 0, 0.24 + shaftH + 0.13, 0));
+  }
+  return g;
+}
+
+export function makeLoungeChair() {
+  const g = new THREE.Group();
+  const velvet = mat(0x1a2848, { roughness: 0.5 });
+  const wood = mat(0x2a1608, { roughness: 0.35, flatShading: false });
+  // seat cushion
+  g.add(box(0.7, 0.16, 0.6, velvet, 0, 0.44, 0));
+  // back cushion
+  g.add(box(0.7, 0.55, 0.12, velvet, 0, 0.8, -0.24));
+  // armrests
+  for (const sx of [-0.35, 0.35]) {
+    g.add(box(0.06, 0.28, 0.5, wood, sx, 0.5, 0.02));
+    g.add(box(0.1, 0.06, 0.56, wood, sx, 0.66, 0.02));
+  }
+  // legs
+  for (const [lx, lz] of [[-0.28, 0.22], [0.28, 0.22], [-0.28, -0.22], [0.28, -0.22]])
+    g.add(cyl(0.025, 0.03, 0.35, GOLD(), lx, 0.175, lz, 8));
+  // button tufting (small gold studs on the back)
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++)
+    g.add(sph(0.015, GOLD(), -0.18 + i * 0.18, 0.65 + j * 0.2, -0.17, 6));
+  return g;
+}
+
 export function makePlanter() {
   const g = new THREE.Group();
   g.add(cyl(0.32, 0.26, 0.55, mat(0x1a1a1a, { roughness: 0.3 }), 0, 0.28, 0, 10));

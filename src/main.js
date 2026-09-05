@@ -151,6 +151,8 @@ function openSettings() {
   $('settings-name').value = game.s.playerName;
   $('settings-casino-name').value = game.casinoDisplayName();
   $('settings-casino-name').placeholder = game.casinoDef.name;
+  $('settings-level').value = game.s.casino;
+  $('settings-money').value = Math.floor(game.s.money);
   updateSettingsUI();
   $('settings').classList.remove('hidden');
   modalOpen = true;
@@ -172,7 +174,25 @@ function closeSettings() {
     else game.s.casinoNames[cid] = newCasinoName;
     changed = true;
   }
-  if (changed) { game.save(); rebuildWorld(); }
+  // dev: money
+  const rawMoney = parseFloat($('settings-money').value);
+  if (!isNaN(rawMoney) && rawMoney >= 0 && rawMoney !== game.s.money) {
+    game.s.money = rawMoney;
+    changed = true;
+  }
+  // dev: casino level
+  let casinoChanged = false;
+  const newLevel = parseInt($('settings-level').value, 10);
+  if (newLevel !== game.s.casino && newLevel >= 0 && newLevel <= 2) {
+    if (!game.s.ownedCasinos.includes(newLevel)) game.s.ownedCasinos.push(newLevel);
+    game.s.casino = newLevel;
+    game.s.machineCash = 0;
+    game.recompute();
+    customers.clearAll();
+    changed = true;
+    casinoChanged = true;
+  }
+  if (changed) { game.save(); rebuildWorld({ keepCustomers: !casinoChanged }); updateDisplayNames(); }
   $('settings').classList.add('hidden');
   modalOpen = false;
 }
@@ -180,6 +200,7 @@ $('btn-settings').onclick = () => { if (!started || activeGame) return; if (!$('
 $('settings-close').onclick = closeSettings;
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
+$('settings-dev-toggle').onclick = () => { $('settings-dev').classList.toggle('hidden'); $('settings-dev-toggle').classList.toggle('open'); };
 document.querySelectorAll('.hot').forEach(h => h.onclick = () => {
   if (!started || modalOpen || activeGame) return;
   const k = h.dataset.key;

@@ -8,8 +8,8 @@ import { makeBouncer } from './people.js';
 
 const PALETTE = {
   duck:   { carpet: ['#3a0b1e', '#c99a2e', '#7a2a5a'], wall: ['#3b2418', '#b8862a'], felt: '#0f5a3a', facade: 'brick', neighbours: ['pawn', 'bail'], ceiling: 0x120a10, warm: 0xffb060 },
-  rat:    { carpet: ['#101a3a', '#d4af37', '#3a2a6a'], wall: ['#1e1a30', '#d4af37'], felt: '#123e6b', facade: 'stone', neighbours: ['LIQUOR', 'TATTOO'], ceiling: 0x0c0a18, warm: 0xffc070 },
-  diablo: { carpet: ['#2a0710', '#ffd700', '#8a1030'], wall: ['#2a0c14', '#ffd700'], felt: '#0a4a7a', facade: 'marble', neighbours: [], ceiling: 0x14060a, warm: 0xffd0a0 },
+  rat:    { carpet: ['#0e1428', '#b89840', '#1a2040'], wall: ['#161c2e', '#8a7a50'], felt: '#0e3a5a', facade: 'stone', neighbours: ['LIQUOR', 'TATTOO'], ceiling: 0x10141e, warm: 0xffc878 },
+  diablo: { carpet: ['#f0e8d8', '#d4af37', '#c8bca8'], wall: ['#e8e0d0', '#d4af37'], felt: '#0a4a7a', facade: 'marble', neighbours: [], ceiling: 0xf0ece0, warm: 0xfff0d0 },
 };
 
 export class CasinoWorld {
@@ -38,6 +38,7 @@ export class CasinoWorld {
     this.W = W; this.D = D; this.H = H;
     const R = this.root;
     const add = (o) => { R.add(o); return o; };
+    const tier = def.id === 'duck' ? 0 : def.id === 'rat' ? 1 : 2;
 
     // =====================================================================
     // STREET
@@ -84,8 +85,11 @@ export class CasinoWorld {
     const floor = M.box(W, 0.12, D, has('carpet') ? M.texMat(T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]), { roughness: 0.9 }) : M.texMat(carpetTex, { roughness: 0.9 }), 0, 0.06, 0);
     floor.receiveShadow = true; add(floor);
     // marble walkway from the door to the tables + a runner outside
-    const marble = M.texMat(T.marbleTexture('#a09888', '#787068', [1, 2]), { roughness: 0.6, metalness: 0.02, envMapIntensity: 0.1 });
-    add(M.box(3.4, 0.13, 6, marble, 0, 0.065, D / 2 - 3)); add(M.box(3.6, 0.02, 6.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.5, flatShading: false }), 0, 0.125, D / 2 - 3).translateY(-0.01));
+    const marbleW = def.id === 'duck' ? 3.4 : 4.2;
+    const marble = M.texMat(T.marbleTexture(def.id === 'duck' ? '#a09888' : '#c8c0b4', def.id === 'duck' ? '#787068' : '#a8a098', [1, 2]), { roughness: def.id === 'duck' ? 0.6 : 0.3, metalness: def.id === 'duck' ? 0.02 : 0.06, envMapIntensity: 0.1 });
+    const walkLen = def.id === 'duck' ? 6 : D - 2;
+    add(M.box(marbleW, 0.13, walkLen, marble, 0, 0.065, D / 2 - walkLen / 2));
+    add(M.box(marbleW + 0.2, 0.02, walkLen + 0.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.5, flatShading: false }), 0, 0.125, D / 2 - walkLen / 2).translateY(-0.01));
     add(M.box(3, 0.05, 6, M.mat(0x8b0000, { roughness: 0.9 }), 0, 0.17, D / 2 + 3.2)); // red carpet outside
     // walls
     const wallMat = M.texMat(T.wallTexture(P.wall[0], P.wall[1], [W / 4, 1]), { roughness: 0.85 });
@@ -115,7 +119,10 @@ export class CasinoWorld {
     add(M.box(W, 0.2, D, ceilMat, 0, H, 0));
     if (has('sky')) { for (let i = 0; i < 14; i++) add(M.sph(0.9 + Math.random() * 1.2, M.glow(0xffffff, 0.6, { flatShading: false }), (Math.random() - 0.5) * W * 0.9, H - 0.6, (Math.random() - 0.5) * D * 0.9, 8)); }
     // coffered ceiling beams
-    for (let x = -W / 2 + 4; x < W / 2; x += 4) add(M.box(0.2, 0.25, D, M.mat(P.wall[1] === '#ffd700' ? 0x6b5a1a : 0x3a2a1a), x, H - 0.12, 0));
+    const beamMat = M.mat(tier === 2 ? 0xd4c8b0 : tier === 1 ? 0x2a3048 : 0x3a2a1a, { roughness: 0.4, metalness: tier === 0 ? 0 : 0.15 });
+    const beamW = def.id === 'duck' ? 0.2 : 0.25;
+    for (let x = -W / 2 + 4; x < W / 2; x += 4) add(M.box(beamW, 0.25, D, beamMat, x, H - 0.12, 0));
+    if (def.id !== 'duck') { for (let z = -D / 2 + 4; z < D / 2; z += 4) add(M.box(W, 0.25, beamW, beamMat, 0, H - 0.12, z)); }
     // door: swung-open double doors + awning with bulbs
     const dl = M.makeDoubleDoor(doorW, 3.2); dl.position.set(0, 0.12, D / 2); add(dl);
     dl.children[0].rotation.y = -Math.PI / 2 + 0.2; dl.children[0].position.set(-doorW / 2 + 0.05, 0, doorW / 4 + 0.2);
@@ -154,9 +161,15 @@ export class CasinoWorld {
       else { const l = new THREE.PointLight(P.warm, 40, 16, 1.6); l.position.set(x, H - 0.5, z); add(l); add(M.cyl(0.25, 0.3, 0.1, M.glow(0xffe0b0, 1.4), x, H - 0.16, z, 10)); }
     }
     // sconces along the side walls
-    for (let z = -D / 2 + 3; z < D / 2 - 2; z += 6) {
-      const s1 = M.makeSconce(P.warm); s1.position.set(-W / 2 + 0.24, 2.6, z); s1.rotation.y = Math.PI / 2; add(s1); s1.userData.light.intensity = 3;
-      const s2 = M.makeSconce(P.warm); s2.position.set(W / 2 - 0.24, 2.6, z); s2.rotation.y = -Math.PI / 2; add(s2); s2.userData.light.intensity = 3;
+    const sconceSpacing = def.id === 'duck' ? 6 : 4.5;
+    const sconceIntensity = def.id === 'duck' ? 3 : 5;
+    for (let z = -D / 2 + 3; z < D / 2 - 2; z += sconceSpacing) {
+      const s1 = M.makeSconce(P.warm); s1.position.set(-W / 2 + 0.24, 2.6, z); s1.rotation.y = Math.PI / 2; add(s1); s1.userData.light.intensity = sconceIntensity;
+      const s2 = M.makeSconce(P.warm); s2.position.set(W / 2 - 0.24, 2.6, z); s2.rotation.y = -Math.PI / 2; add(s2); s2.userData.light.intensity = sconceIntensity;
+      // rat + diablo: also sconces along the back wall
+      if (def.id !== 'duck' && z > -D / 2 + 4 && z < 0) {
+        const s3 = M.makeSconce(P.warm); s3.position.set(z, 2.6, -D / 2 + 0.24); add(s3); s3.userData.light.intensity = sconceIntensity;
+      }
     }
     // clocks unless removed
     if (!has('noclocks')) { const c1 = M.makeClock(); c1.position.set(-W / 2 + 0.25, 3.6, 0); c1.rotation.y = Math.PI / 2; add(c1); const c2 = M.makeClock(); c2.position.set(0, 3.8, -D / 2 + 0.25); add(c2); }
@@ -173,13 +186,61 @@ export class CasinoWorld {
     const gold = M.GOLD(), chrome = M.CHROME();
 
     // wainscoting / baseboard trim along all interior walls
-    const trimMat = M.mat(def.id === 'diablo' ? 0x6b4a08 : 0x3a2a1a, { roughness: 0.5, metalness: 0.15 });
-    add(M.box(W, 0.5, 0.06, trimMat, 0, 0.37, -D / 2 + 0.22));
-    add(M.box(0.06, 0.5, D, trimMat, -W / 2 + 0.22, 0.37, 0));
-    add(M.box(0.06, 0.5, D, trimMat, W / 2 - 0.22, 0.37, 0));
-    add(M.box(W, 0.04, 0.02, gold, 0, 0.63, -D / 2 + 0.24));
-    add(M.box(0.02, 0.04, D, gold, -W / 2 + 0.24, 0.63, 0));
-    add(M.box(0.02, 0.04, D, gold, W / 2 - 0.24, 0.63, 0));
+    const trimMat = M.mat(tier === 2 ? 0xd8d0c0 : tier === 1 ? 0x2a3048 : 0x3a2a1a, { roughness: tier === 2 ? 0.3 : 0.5, metalness: tier > 0 ? 0.25 : 0.15 });
+    const trimH = tier > 0 ? 0.7 : 0.5;
+    add(M.box(W, trimH, 0.06, trimMat, 0, trimH / 2 + 0.12, -D / 2 + 0.22));
+    add(M.box(0.06, trimH, D, trimMat, -W / 2 + 0.22, trimH / 2 + 0.12, 0));
+    add(M.box(0.06, trimH, D, trimMat, W / 2 - 0.22, trimH / 2 + 0.12, 0));
+    add(M.box(W, 0.04, 0.02, gold, 0, trimH + 0.14, -D / 2 + 0.24));
+    add(M.box(0.02, 0.04, D, gold, -W / 2 + 0.24, trimH + 0.14, 0));
+    add(M.box(0.02, 0.04, D, gold, W / 2 - 0.24, trimH + 0.14, 0));
+
+    // crown moulding at ceiling (rat + diablo)
+    if (tier > 0) {
+      const crownMat = M.mat(tier === 2 ? 0xe0d8c8 : 0x3a4058, { roughness: 0.4, metalness: 0.2 });
+      add(M.box(W, 0.12, 0.12, crownMat, 0, H - 0.06, -D / 2 + 0.22));
+      add(M.box(0.12, 0.12, D, crownMat, -W / 2 + 0.22, H - 0.06, 0));
+      add(M.box(0.12, 0.12, D, crownMat, W / 2 - 0.22, H - 0.06, 0));
+      add(M.box(W, 0.04, 0.04, gold, 0, H - 0.14, -D / 2 + 0.22));
+      add(M.box(0.04, 0.04, D, gold, -W / 2 + 0.22, H - 0.14, 0));
+      add(M.box(0.04, 0.04, D, gold, W / 2 - 0.22, H - 0.14, 0));
+    }
+
+    // marble floor inlays (rat + diablo): entrance medallion + border
+    if (tier > 0) {
+      const marbleDark = M.mat(tier === 2 ? 0xc8c0b4 : 0x2a2a34, { roughness: 0.2, metalness: 0.05, flatShading: false });
+      const marbleLight = M.texMat(T.marbleTexture(tier === 2 ? '#f0ece0' : '#c0b8a8', tier === 2 ? '#d8d0c0' : '#9a9088', [2, 2]), { roughness: 0.3, metalness: 0.03 });
+      // border strip around the entire floor
+      add(M.box(W - 1, 0.02, 0.18, gold, 0, 0.135, -D / 2 + 0.7));
+      add(M.box(W - 1, 0.02, 0.18, gold, 0, 0.135, D / 2 - 0.7));
+      add(M.box(0.18, 0.02, D - 1, gold, -W / 2 + 0.7, 0.135, 0));
+      add(M.box(0.18, 0.02, D - 1, gold, W / 2 - 0.7, 0.135, 0));
+      // medallion near the entrance (between the door and the tables)
+      const medZ = D / 2 - D * 0.35;
+      const med = M.box(3.0, 0.02, 3.0, marbleLight, 0, 0.135, medZ);
+      med.rotation.y = Math.PI / 4; add(med);
+      add(M.cyl(1.8, 1.8, 0.02, marbleDark, 0, 0.14, medZ, 24));
+      add(M.cyl(1.4, 1.4, 0.02, marbleLight, 0, 0.145, medZ, 20));
+      add(M.cyl(0.25, 0.25, 0.02, gold, 0, 0.15, medZ, 12));
+    }
+
+    // columns (rat + diablo) — flanking the gaming floor, along the edges of the slot zone
+    if (tier > 0) {
+      const colStyle = tier === 2 ? 'ionic' : 'doric';
+      const colXL = -W / 2 + 7;
+      const colXR = W / 2 - 3;
+      const colZStart = -D / 2 + 4;
+      const colZEnd = D / 2 - 7;
+      const colCount = Math.max(2, Math.round((colZEnd - colZStart) / 6));
+      for (let i = 0; i < colCount; i++) {
+        const z = colZStart + i * (colZEnd - colZStart) / (colCount - 1);
+        for (const cx of [colXL, colXR]) {
+          const col = M.makeColumn(H - 0.3, colStyle);
+          col.position.set(cx, 0.12, z); add(col);
+          this.addCollider(cx, z, 0.7, 0.7);
+        }
+      }
+    }
 
     // fireplace on the right wall, facing inward
     const fp = M.makeFireplace(def.id);
@@ -190,50 +251,67 @@ export class CasinoWorld {
 
     // framed paintings along the back wall
     { let seed = 0;
-      for (let x = -W / 2 + 5; x < W / 2 - 5; x += W / (def.id === 'duck' ? 2.5 : 4)) {
+      for (let x = -W / 2 + 5; x < W / 2 - 5; x += W / (tier === 0 ? 2.5 : 4)) {
         const p = M.makeWallPainting(seed++);
         p.position.set(x, 2.8, -D / 2 + 0.24); add(p);
       }
     }
     // paintings along the right wall (between sconces, skip near the fireplace)
     { let seed = 4;
-      for (let z = -D / 2 + 4; z < D / 2 - 4; z += D / (def.id === 'duck' ? 2 : 3)) {
+      for (let z = -D / 2 + 4; z < D / 2 - 4; z += D / (tier === 0 ? 2 : 3)) {
         if (Math.abs(z - (-D / 4)) < 1.6) continue;
         const p = M.makeWallPainting(seed++);
         p.position.set(W / 2 - 0.22, 2.8, z); p.rotation.y = -Math.PI / 2; add(p);
       }
     }
 
-    // coffee & snacks station along left wall (in front of the office area)
+    // coffee & snacks station along left wall — near the entrance side
+    const coffeeZ = tier === 0 ? D * 0.12 : D / 2 - 5;
     const coffee = M.makeCoffeeStation();
-    coffee.position.set(-W / 2 + 1.5, 0.12, D * 0.12);
+    coffee.position.set(-W / 2 + 1.5, 0.12, coffeeZ);
     coffee.rotation.y = Math.PI / 2;
-    add(coffee); this.addCollider(-W / 2 + 1.5, D * 0.12, 1.0, 2.6);
+    add(coffee); this.addCollider(-W / 2 + 1.5, coffeeZ, 1.0, 2.6);
 
-    // fire extinguisher on the left wall near the back
-    const fex = -W / 2 + 0.26, fez = -D / 2 + D * 0.65;
-    add(M.cyl(0.08, 0.08, 0.45, M.mat(0xcc2222, { roughness: 0.3 }), fex, 1.1, fez, 10));
-    add(M.cyl(0.03, 0.03, 0.12, M.mat(0x111111), fex, 1.38, fez, 6));
-    add(M.box(0.04, 0.16, 0.1, chrome, fex, 1.45, fez));
-
-    // trash cans tucked in corners near the entrance
-    const trashMat = M.mat(0x222228, { roughness: 0.6 });
-    for (const [tx, tz] of [[W / 2 - 0.6, D / 2 - 1.0], [-W / 2 + 0.6, D / 2 - 1.0]]) {
-      add(M.cyl(0.2, 0.16, 0.65, trashMat, tx, 0.44, tz, 10));
-      add(M.cyl(0.22, 0.22, 0.04, trashMat, tx, 0.77, tz, 10));
+    // lounge seating near the entrance (rat + diablo) — tucked against the front wall beside the door
+    if (tier > 0) {
+      for (const [lx, lr] of [[-W / 2 + 2.5, Math.PI / 4], [W / 2 - 2.5, -Math.PI / 4]]) {
+        const ch = M.makeLoungeChair();
+        ch.position.set(lx, 0.12, D / 2 - 2.0); ch.rotation.y = lr; add(ch);
+      }
     }
 
-    // floor-level cable covers running along back wall
-    add(M.box(W * 0.6, 0.04, 0.2, M.mat(0x2a2a2e, { roughness: 0.9 }), 0, 0.14, -D / 2 + 0.8));
+    // fire extinguisher on the left wall (duck only — nicer casinos hide them)
+    if (tier === 0) {
+      const fex = -W / 2 + 0.26, fez = -D / 2 + D * 0.65;
+      add(M.cyl(0.08, 0.08, 0.45, M.mat(0xcc2222, { roughness: 0.3 }), fex, 1.1, fez, 10));
+      add(M.cyl(0.03, 0.03, 0.12, M.mat(0x111111), fex, 1.38, fez, 6));
+      add(M.box(0.04, 0.16, 0.1, chrome, fex, 1.45, fez));
+    }
+
+    // trash cans (duck: bare bins, rat+: brass with lids)
+    for (const [tx, tz] of [[W / 2 - 0.6, D / 2 - 1.0], [-W / 2 + 0.6, D / 2 - 1.0]]) {
+      if (tier === 0) {
+        add(M.cyl(0.2, 0.16, 0.65, M.mat(0x222228, { roughness: 0.6 }), tx, 0.44, tz, 10));
+        add(M.cyl(0.22, 0.22, 0.04, M.mat(0x222228, { roughness: 0.6 }), tx, 0.77, tz, 10));
+      } else {
+        add(M.cyl(0.16, 0.14, 0.7, M.mat(0x6b5a3a, { roughness: 0.35, metalness: 0.3 }), tx, 0.47, tz, 12));
+        add(M.cyl(0.17, 0.17, 0.04, gold, tx, 0.83, tz, 12));
+        add(M.sph(0.06, gold, tx, 0.88, tz, 8));
+      }
+    }
+
+    // floor-level cable covers (duck only — nicer casinos have clean floors)
+    if (tier === 0) add(M.box(W * 0.6, 0.04, 0.2, M.mat(0x2a2a2e, { roughness: 0.9 }), 0, 0.14, -D / 2 + 0.8));
 
     // ashtray stands along the right wall corridor
     for (let z = -D / 2 + 6; z < D / 2 - 6; z += D / 3) {
-      add(M.cyl(0.12, 0.15, 0.9, chrome, W / 2 - 1.0, 0.57, z, 8));
-      add(M.cyl(0.18, 0.12, 0.08, M.mat(0x111111), W / 2 - 1.0, 1.05, z, 10));
+      const ashMat = tier > 0 ? gold : chrome;
+      add(M.cyl(0.12, 0.15, 0.9, ashMat, W / 2 - 1.0, 0.57, z, 8));
+      add(M.cyl(0.18, 0.12, 0.08, tier > 0 ? M.mat(0x2a1608, { roughness: 0.4 }) : M.mat(0x111111), W / 2 - 1.0, 1.05, z, 10));
     }
 
-    // stanchion posts near the entrance (crowd control, nicer casinos)
-    if (def.id !== 'duck') {
+    // stanchion posts near the entrance (rat + diablo)
+    if (tier > 0) {
       for (const sx of [-4.5, 4.5]) {
         add(M.cyl(0.03, 0.03, 1.0, gold, sx, 0.62, D / 2 - 2.8, 8));
         add(M.cyl(0.16, 0.18, 0.04, gold, sx, 0.14, D / 2 - 2.8, 12));
@@ -241,9 +319,15 @@ export class CasinoWorld {
       }
     }
 
-    // extra planters near the coffee station and right-side corridor
-    { const p1 = M.makePlanter(); p1.position.set(-W / 2 + 0.7, 0.12, D * 0.12 + 1.8); add(p1); }
+    // planters: corners + flanking the entrance for nicer casinos
+    { const p1 = M.makePlanter(); p1.position.set(-W / 2 + 0.7, 0.12, coffeeZ + 1.8); add(p1); }
     { const p2 = M.makePlanter(); p2.position.set(W / 2 - 0.7, 0.12, -D / 2 + 1.2); add(p2); }
+    if (tier > 0) {
+      for (const sx of [-2.0, 2.0]) { const p = M.makePlanter(); p.position.set(sx, 0.12, D / 2 - 1.5); add(p); }
+      // corners
+      { const p3 = M.makePlanter(); p3.position.set(W / 2 - 0.7, 0.12, D / 2 - 1.2); add(p3); }
+      { const p4 = M.makePlanter(); p4.position.set(-W / 2 + 0.7, 0.12, D / 2 - 1.2); add(p4); }
+    }
 
     // =====================================================================
     // OFFICE (back-left): desk, safe, cage
