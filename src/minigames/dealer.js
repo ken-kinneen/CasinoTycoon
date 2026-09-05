@@ -51,7 +51,7 @@ export class DealerGame extends MiniGame {
       target: 5 + Math.floor(Math.random() * 91),
     };
     this.countdown = 10;
-    this.speed = 35 * st.dealerSpeed;
+    this.speed = 47 * st.dealerSpeed;
     this.number = Math.random() * 100; this.dir = 1;
     this.locked = null;
   }

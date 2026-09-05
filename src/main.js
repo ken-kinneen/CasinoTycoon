@@ -296,7 +296,7 @@ function startActivity(key) {
       else sfx.play('groan');
       showResult('Vault crack', `<div class="row"><span>Secured in the vault</span><span class="big">${fmtMoney(res.banked)}</span></div><div class="row"><span>Left in the hoppers</span><b>${fmtMoney(game.s.machineCash)}</b></div><div class="quip">"${res.banked === 0 ? 'Couldn\'t remember a single number. Embarrassing.' : 'Cracked it. The money remembers who it belongs to.'}"</div>`, res.banked ? 'CRACKED' : 'LOCKED');
     });
-    activeGame.open('Memorize each sequence, then enter it back. 5 rounds — each one adds a digit.');
+    activeGame.open('Watch the keypad — memorize the sequence, then punch it back. 4 rounds, 3 to 6 digits.');
   } else if (key === 'dealer') {
     activeGame = new DealerGame(game, customers.tablePlayers());
     activeGame.onDone = finish(res => {

@@ -364,16 +364,6 @@ export class CasinoWorld {
       add(M.cyl(0.4, 0.3, 0.5, M.mat(0x111111, { roughness: 0.2 }), vx, 0.4, vz - 0.2, 12)); add(M.cyl(0.1, 0.1, 0.4, M.CHROME(), vx, 0.85, vz - 0.2, 8)); // champagne bucket
       this.addCollider(vx, vz - 1.6, 2.6, 1.4);
     }
-    // awards row along the front-left wall
-    let ax = -W / 2 + 8.5;
-    const placeAward = (obj, w = 2) => { obj.position.set(ax, 0.12, D / 2 - 2.4); add(obj); this.addCollider(ax, D / 2 - 2.4, w, w); ax += w + 1.2; };
-    if (has('toilet')) placeAward(M.makeToilet(), 1.8);
-    if (has('selfstatue')) placeAward(M.makeStatue('owner'), 1.6);
-    if (has('statue')) placeAward(M.makeStatue('rat'), 1.6);
-    if (has('tiger')) { const t = M.makeTiger(); placeAward(t, 3.0); this.animated.push({ type: 'tiger', obj: t, t: 0 }); }
-    if (has('fountain')) { const f = M.makeFountain(); f.position.set(0, 0.12, D / 2 - 9.5); add(f); this.addCollider(0, D / 2 - 9.5, 3.4, 3.4); this.animated.push({ type: 'fountain', obj: f, t: 0 }); }
-    if (has('volcano')) { const v = M.makeVolcano(); v.position.set(W / 2 - 5, 0.12, 2); add(v); this.addCollider(W / 2 - 5, 2, 6, 6); this.animated.push({ type: 'volcano', obj: v, t: 0 }); }
-
     // =====================================================================
     // GAMING FLOOR — real casino layout: central table pit, slot pods
     // against walls and in sections with separators, clear entrance aisle
@@ -381,28 +371,43 @@ export class CasinoWorld {
     const officeW = tier === 0 ? 4 : 7;
     const wallPad = 1.8;
     this.corridorX = W / 2 - 2.0;
-    const pitCX = officeW / 2;
+    // awards along the left wall (away from the entrance)
+    let az = -D / 2 + officeW + 2;
+    const awardX = -W / 2 + 1.4;
+    const placeAward = (obj, w = 2) => { obj.position.set(awardX, 0.12, az); add(obj); this.addCollider(awardX, az, w, w); az += w + 1.2; };
+    if (has('toilet')) placeAward(M.makeToilet(), 1.8);
+    if (has('selfstatue')) placeAward(M.makeStatue('owner'), 1.6);
+    if (has('statue')) placeAward(M.makeStatue('rat'), 1.6);
+    if (has('tiger')) { const t = M.makeTiger(); placeAward(t, 3.0); this.animated.push({ type: 'tiger', obj: t, t: 0 }); }
+    if (has('fountain')) { const f = M.makeFountain(); f.position.set(0, 0.12, 0); add(f); this.addCollider(0, 0, 3.4, 3.4); this.animated.push({ type: 'fountain', obj: f, t: 0 }); }
+    if (has('volcano')) { const v = M.makeVolcano(); v.position.set(W / 2 - 5, 0.12, -D / 4); add(v); this.addCollider(W / 2 - 5, -D / 4, 6, 6); this.animated.push({ type: 'volcano', obj: v, t: 0 }); }
     const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
 
-    // --- CENTRAL TABLE PIT: tables in the middle of the room ---
+    // --- TABLE PIT: tables flanking the marble walkway ---
     const nTables = Math.round(st.tables);
-    const pitZ = 0;
-    const pitSpacing = Math.min(5.5, (W - officeW - 6) / Math.max(1, nTables));
-    const pitRowW = (nTables - 1) * pitSpacing;
-    for (let i = 0; i < nTables; i++) {
-      const x = pitCX - pitRowW / 2 + i * pitSpacing;
-      const z = pitZ + ((i % 2) ? 1.5 : -1.5);
+    const marbleHalfW = def.id === 'duck' ? 2.0 : 2.5;
+    const tableOffsetX = marbleHalfW + 2.2;
+    const hasFountain = has('fountain');
+    const nLeft = Math.ceil(nTables / 2);
+    const nRight = nTables - nLeft;
+    const tableZStart = hasFountain ? -3 : -D / 4 + 2;
+    const tableZSpacing = Math.min(5.5, (D / 2 - 4 - Math.abs(tableZStart)) / Math.max(1, nLeft));
+
+    const placeTable = (x, z) => {
       const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, z); add(t);
       this.addCollider(x, z, 3.4, 2.6);
       const seats = [];
       for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95)); }
       seats.push(new THREE.Vector3(x - 2.2, 0, z + 0.9));
       this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, z), seats, dealerSpot: new THREE.Vector3(x, 0, z - 1.5), occupants: [], cash: 0, aisleZ: z + 2.6 });
-    }
+    };
+    for (let i = 0; i < nLeft; i++) placeTable(-tableOffsetX, tableZStart - i * tableZSpacing);
+    for (let i = 0; i < nRight; i++) placeTable(tableOffsetX, tableZStart - i * tableZSpacing);
+
     if (this.tables.length) this.zones.dealer = { pos: this.tables[0].dealerSpot.clone(), r: 1.5, label: 'Deal a hand', key: 'dealer', icon: 'cards' };
     if (has('roulette')) {
-      const rx = pitCX + pitRowW / 2 + pitSpacing * 0.7;
-      const rz = pitZ;
+      const rx = tableOffsetX;
+      const rz = tableZStart + tableZSpacing * 0.8;
       const r = M.makeRouletteTable(); r.position.set(Math.min(rx, W / 2 - 4), 0.12, rz); r.rotation.y = Math.PI / 2; add(r);
       this.addCollider(r.position.x, rz, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel });
     }
@@ -457,7 +462,7 @@ export class CasinoWorld {
         for (let c = 0; c < intCols; c++) {
           const ix = intXStart + (c + 0.5) * (intXEnd - intXStart) / intCols;
           const iz = intZ1 + (r + 0.5) * (intZ2 - intZ1) / intRows;
-          if (Math.abs(ix - pitCX) < pitRowW / 2 + 4 && Math.abs(iz - pitZ) < 4) continue;
+          if (Math.abs(ix) < tableOffsetX + 3 && Math.abs(iz) < 4) continue;
           pods.push({ x: ix, z: iz, face: (c % 2) ? Math.PI : 0, wall: 'interior' });
         }
       }
@@ -523,7 +528,7 @@ export class CasinoWorld {
     this.doorInside = new THREE.Vector3(0, 0, D / 2 - 1.6);
     this.doorOutside = new THREE.Vector3(0, 0, D / 2 + 1.6);
     this.spawnPoint = new THREE.Vector3(0, 0, D / 2 + 8);
-    this.aisleZ = pitZ + 4;   // front walkway (past the table pit)
+    this.aisleZ = D / 2 - 8;   // front walkway between entrance and gaming area
     const mat = M.textPlane('WELCOME · NO REFUNDS · NO EXITS', { w: 3, h: 0.4, color: '#b89830' }); mat.rotation.x = -Math.PI / 2; mat.position.set(0, 0.14, D / 2 - 0.8); add(mat);
   }
 
