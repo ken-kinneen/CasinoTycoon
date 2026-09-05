@@ -114,9 +114,9 @@ export class Ledger {
           <div class="card-body">
             <div class="tagline">“${c.tagline}”</div>
             <div class="stat-strip">
-              <div><span>Capacity</span><b>${b.capacity}</b></div><div><span>Machines</span><b>${b.machines}</b></div>
-              <div><span>Tables</span><b>${b.tables}</b></div><div><span>Walk-ins</span><b>${b.trafficPerMin}/min</b></div>
-              <div><span>Spend/guest</span><b>$${b.spendPerMin}/min</b></div><div><span>Hopper cap</span><b>$${b.hopperCap}</b></div>
+              <div><span>Machines</span><b>${b.machines}</b></div><div><span>Tables</span><b>${b.tables}</b></div>
+              <div><span>Walk-ins</span><b>${b.trafficPerMin}/min</b></div><div><span>Spend/guest</span><b>$${b.spendPerMin}/min</b></div>
+              <div><span>Hopper cap</span><b>$${b.hopperCap}</b></div><div><span>Prestige</span><b>${b.prestige}</b></div>
             </div>
             <div class="card-foot"><div class="cost ${owned ? 'owned' : ''}">${owned ? icon('check') + (current ? ' Current' : ' Owned') : fmtMoney(c.price)}</div><button class="buy ${owned ? 'owned' : ''}" ${current || (!owned && g.s.money < c.price) ? 'disabled' : ''}>${current ? 'Here' : owned ? 'Move in' : g.s.money >= c.price ? 'Buy' : 'Too poor'}</button></div>
           </div>`;

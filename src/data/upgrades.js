@@ -23,7 +23,7 @@ export const AD_UPGRADES = [
 // 15 upgrades for each casino. Keyed by casino id.
 export const CASINO_UPGRADES = {
   duck: [
-    { id: 'd_slots1', name: 'Two More Slot Machines', cost: 250, blurb: 'Fell off a truck. I was driving the truck.', model: 'machines', effects: [{ stat: 'machines', add: 2 }, { stat: 'capacity', add: 2 }] },
+    { id: 'd_slots1', name: 'Two More Slot Machines', cost: 250, blurb: 'Fell off a truck. I was driving the truck.', model: 'machines', effects: [{ stat: 'machines', add: 2 }] },
     { id: 'd_clocks', name: 'Remove the Clocks', cost: 300, blurb: 'Time is a construct. So is their retirement fund.', model: 'noclocks', effects: [{ stat: 'stayTime', mul: 1.1 }] },
     { id: 'd_windows', name: 'Board Up the Windows', cost: 400, blurb: 'Daylight reminds people they have lives.', model: 'windows', effects: [{ stat: 'stayTime', mul: 1.1 }] },
     { id: 'd_drinks', name: 'Double-Pour Drinks', cost: 500, blurb: 'Free drinks, twice the vodka. Generosity.', model: 'bar', effects: [{ stat: 'sharpness', add: -0.08 }, { stat: 'spendPerMin', mul: 1.1 }] },
@@ -32,15 +32,15 @@ export const CASINO_UPGRADES = {
     { id: 'd_tighten', name: 'Tighten the Slots', cost: 1200, blurb: 'The payout chip is now a drawing of a payout chip.', effects: [{ stat: 'houseEdge', mul: 1.2 }, { stat: 'heat', add: 4 }] },
     { id: 'd_peanuts', name: 'Free Peanuts (Extra Salty)', cost: 1500, blurb: 'Thirsty people buy drinks. Drunk people buy spins.', effects: [{ stat: 'spendPerMin', mul: 1.1 }] },
     { id: 'd_atm', name: 'Lobby ATM (9% fee)', cost: 2000, blurb: 'Their money never has to leave the building. Neither do they.', model: 'atm', effects: [{ stat: 'spendPerMin', mul: 1.2 }, { stat: 'heat', add: 3 }] },
-    { id: 'd_marshal', name: 'Bribe the Fire Marshal', cost: 2500, blurb: 'Max occupancy is now whatever I write on the sign.', effects: [{ stat: 'capacity', add: 6 }, { stat: 'heat', add: -5 }] },
+    { id: 'd_marshal', name: 'Bribe the Fire Marshal', cost: 2500, blurb: 'Max occupancy is now whatever I write on the sign.', effects: [{ stat: 'trafficPerMin', add: 0.8 }, { stat: 'heat', add: -5 }] },
     { id: 'd_bouncer', name: 'Hire a Bouncer', cost: 3000, blurb: 'His job is not keeping people out.', model: 'bouncer', effects: [{ stat: 'stayTime', mul: 1.1 }, { stat: 'heat', add: 2 }] },
-    { id: 'd_slots2', name: 'Four More Slot Machines', cost: 3500, blurb: 'Different truck.', model: 'machines', effects: [{ stat: 'machines', add: 4 }, { stat: 'capacity', add: 4 }] },
+    { id: 'd_slots2', name: 'Four More Slot Machines', cost: 3500, blurb: 'Different truck.', model: 'machines', effects: [{ stat: 'machines', add: 4 }] },
     { id: 'd_hoppers', name: 'Bigger Cash Hoppers', cost: 4000, blurb: 'Fewer trips to the safe. More time for evil.', effects: [{ stat: 'hopperCap', mul: 2 }] },
     { id: 'd_gas', name: 'Laughing Gas in the AC', cost: 5000, blurb: 'Everyone\'s having a wonderful time. Medically.', model: 'gas', effects: [{ stat: 'sharpness', add: -0.12 }, { stat: 'stayTime', mul: 1.15 }, { stat: 'heat', add: 10 }] },
     { id: 'd_cart', name: 'Armored Cart Service', cost: 8000, blurb: 'A guy with a cart collects a cut every minute. Great guy. Owes me.', model: 'cart', effects: [{ stat: 'autoCollect', add: 0.1 }] },
   ],
   rat: [
-    { id: 'r_slots1', name: 'Slot Bank Expansion', cost: 6000, blurb: 'A whole wall of blinking hope.', model: 'machines', effects: [{ stat: 'machines', add: 6 }, { stat: 'capacity', add: 6 }] },
+    { id: 'r_slots1', name: 'Slot Bank Expansion', cost: 6000, blurb: 'A whole wall of blinking hope.', model: 'machines', effects: [{ stat: 'machines', add: 6 }] },
     { id: 'r_maze', name: 'Maze Carpet Layout', cost: 8000, blurb: 'The exit is that way. And that way. And that way.', model: 'carpet', effects: [{ stat: 'stayTime', mul: 1.15 }] },
     { id: 'r_drinks', name: 'Bottomless Well Drinks', cost: 10000, blurb: 'The well is bottomless. The vodka is 12 dollars a jug.', model: 'bar', effects: [{ stat: 'sharpness', add: -0.1 }, { stat: 'spendPerMin', mul: 1.1 }] },
     { id: 'r_table', name: 'Second Dealer Table', cost: 12000, blurb: 'Twice the tables, twice the hands I get to deal.', model: 'tables', effects: [{ stat: 'tables', add: 1 }] },
@@ -53,11 +53,11 @@ export const CASINO_UPGRADES = {
     { id: 'r_vip', name: 'VIP Whale Lounge', cost: 45000, blurb: 'Velvet ropes. Behind them: more velvet ropes.', model: 'vip', effects: [{ stat: 'prestige', add: 15 }, { stat: 'spendPerMin', mul: 1.15 }] },
     { id: 'r_perfume', name: 'Pheromone Perfume in the Vents', cost: 50000, blurb: 'It smells like winning. Chemically.', model: 'vents', effects: [{ stat: 'stayTime', mul: 1.15 }, { stat: 'heat', add: 5 }] },
     { id: 'r_buffet', name: 'Free Buffet (Very Salty)', cost: 60000, blurb: 'All you can eat. All you can drink. All you can lose.', model: 'buffet', effects: [{ stat: 'spendPerMin', mul: 1.15 }, { stat: 'trafficPerMin', add: 1 }] },
-    { id: 'r_slots2', name: 'Slot Bank Expansion II', cost: 70000, blurb: 'The wall of hope now has a second wall.', model: 'machines', effects: [{ stat: 'machines', add: 8 }, { stat: 'capacity', add: 8 }] },
-    { id: 'r_mayor', name: 'Mayor on the Payroll', cost: 90000, blurb: 'He cut the ribbon. He also cut the zoning laws.', effects: [{ stat: 'heat', add: -20 }, { stat: 'capacity', add: 10 }] },
+    { id: 'r_slots2', name: 'Slot Bank Expansion II', cost: 70000, blurb: 'The wall of hope now has a second wall.', model: 'machines', effects: [{ stat: 'machines', add: 8 }] },
+    { id: 'r_mayor', name: 'Mayor on the Payroll', cost: 90000, blurb: 'He cut the ribbon. He also cut the zoning laws.', effects: [{ stat: 'heat', add: -20 }, { stat: 'stayTime', mul: 1.15 }] },
   ],
   diablo: [
-    { id: 'p_slots1', name: 'Mega Slot Floor', cost: 120000, blurb: 'Rows to the horizon. The horizon is also a slot machine.', model: 'machines', effects: [{ stat: 'machines', add: 10 }, { stat: 'capacity', add: 10 }] },
+    { id: 'p_slots1', name: 'Mega Slot Floor', cost: 120000, blurb: 'Rows to the horizon. The horizon is also a slot machine.', model: 'machines', effects: [{ stat: 'machines', add: 10 }] },
     { id: 'p_sky', name: 'Fake Sky Ceiling (Always 2pm)', cost: 150000, blurb: 'It is always a lovely afternoon. Forever.', model: 'sky', effects: [{ stat: 'stayTime', mul: 1.2 }] },
     { id: 'p_volcano', name: 'Volcano Fountain Show', cost: 180000, blurb: 'Every 15 minutes it erupts. The insurance guy erupted once.', model: 'volcano', effects: [{ stat: 'trafficPerMin', add: 4 }, { stat: 'prestige', add: 15 }] },
     { id: 'p_sportsbook', name: 'Wire the Sportsbook', cost: 220000, blurb: 'I know the score before the game. Sometimes before the season.', effects: [{ stat: 'houseEdge', mul: 1.2 }, { stat: 'heat', add: 8 }] },
@@ -69,8 +69,8 @@ export const CASINO_UPGRADES = {
     { id: 'p_rail', name: 'Underground Vault Rail', cost: 550000, blurb: 'A little train that carries money to me. I named it.', effects: [{ stat: 'autoCollect', add: 0.2 }, { stat: 'hopperCap', mul: 2 }] },
     { id: 'p_chips', name: 'Chips That Look Bigger Than They Are', cost: 600000, blurb: 'A $5 chip the size of a dinner plate. Feels like nothing to lose.', effects: [{ stat: 'spendPerMin', mul: 1.15 }, { stat: 'sharpness', add: -0.05 }] },
     { id: 'p_exits', name: '"Lost" Exit Signs', cost: 650000, blurb: 'The fire code says exits must be marked. It doesn\'t say correctly.', effects: [{ stat: 'stayTime', mul: 1.15 }, { stat: 'heat', add: 10 }] },
-    { id: 'p_tower', name: 'Casino Hotel Tower', cost: 800000, blurb: 'Forty floors. No checkout desk.', model: 'tower', effects: [{ stat: 'capacity', add: 30 }, { stat: 'stayTime', mul: 1.2 }] },
-    { id: 'p_slots2', name: 'Mega Slot Floor II', cost: 900000, blurb: 'We ran out of floor so we built more floor.', model: 'machines', effects: [{ stat: 'machines', add: 15 }, { stat: 'capacity', add: 15 }] },
+    { id: 'p_tower', name: 'Casino Hotel Tower', cost: 800000, blurb: 'Forty floors. No checkout desk.', model: 'tower', effects: [{ stat: 'trafficPerMin', add: 5 }, { stat: 'stayTime', mul: 1.2 }] },
+    { id: 'p_slots2', name: 'Mega Slot Floor II', cost: 900000, blurb: 'We ran out of floor so we built more floor.', model: 'machines', effects: [{ stat: 'machines', add: 15 }] },
     { id: 'p_governor', name: 'Own the Governor', cost: 1200000, blurb: 'Not bribe. Own. There\'s a receipt.', effects: [{ stat: 'heat', add: -40 }, { stat: 'houseEdge', mul: 1.1 }] },
   ],
 };

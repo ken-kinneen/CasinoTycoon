@@ -24,7 +24,7 @@ export function quip(msg, ms = 5000) {
   bubbleTimer = setTimeout(() => b.classList.add('hidden'), ms);
 }
 
-const STAT_ICON = { capacity: 'people', machines: 'machine', tables: 'cards', trafficPerMin: 'walk', cardConversion: 'card', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', stackSize: 'muscle', cashTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
+const STAT_ICON = { machines: 'machine', tables: 'cards', trafficPerMin: 'walk', cardConversion: 'card', spendPerMin: 'dollar', stayTime: 'clock', sharpness: 'shades', houseEdge: 'chip', hopperCap: 'vault', autoCollect: 'vault', prestige: 'crown', heat: 'flame', walkSpeed: 'shoe', cardWidth: 'hand', cardTime: 'clock', stackSize: 'muscle', cashTime: 'clock', dealerMargin: 'hat', dealerBet: 'chip', dealerSpeed: 'clock' };
 
 export class HUD {
   constructor(game, customers) {
@@ -103,8 +103,9 @@ export class HUD {
     const full = this.customers.world.machines.filter(m => m.cash >= st.hopperCap - 0.5).length;
     $('hud-hopper').textContent = `${fmtMoney(g.s.machineCash)}${full ? ` · ${full} FULL` : ''}`;
     const hb = $('hud-hopper-bar'); hb.style.width = `${Math.min(100, g.s.machineCash / cap * 100)}%`; hb.classList.toggle('full', full > 0);
-    $('hud-guests').textContent = `${this.customers.count} / ${Math.round(st.capacity)}${this.customers.pending ? ` (+${this.customers.pending})` : ''}`;
-    $('hud-guests-bar').style.width = `${Math.min(100, this.customers.count / st.capacity * 100)}%`;
+    const totalSeats = this.customers.world.machines.length + this.customers.world.tables.reduce((a, t) => a + t.seats.length, 0);
+    $('hud-guests').textContent = `${this.customers.count} / ${totalSeats}${this.customers.pending ? ` (+${this.customers.pending})` : ''}`;
+    $('hud-guests-bar').style.width = `${totalSeats ? Math.min(100, this.customers.count / totalSeats * 100) : 0}%`;
     const types = { whale: 0, sharp: 0, drunk: 0 };
     for (const c of this.customers.customers) if (types[c.type] !== undefined) types[c.type]++;
     $('hud-types').innerHTML = `${types.whale ? icon('whale') + types.whale : ''}${types.drunk ? icon('beer') + types.drunk : ''}${types.sharp ? icon('shades') + types.sharp : ''}`;

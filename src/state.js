@@ -17,7 +17,6 @@ const PLAYER_BASE = {
 };
 
 export const STAT_META = {
-  capacity:      { label: 'Capacity',           fmt: v => `${Math.round(v)} guests`,           good: +1 },
   machines:      { label: 'Slot Machines',      fmt: v => `${Math.round(v)}`,                  good: +1 },
   tables:        { label: 'Dealer Tables',      fmt: v => `${Math.round(v)}`,                  good: +1 },
   trafficPerMin: { label: 'Walk-in Traffic',    fmt: v => `${v.toFixed(2)}/min`,               good: +1 },
@@ -41,7 +40,7 @@ export const STAT_META = {
 };
 
 // Which stats show on the casino stats panel (in order).
-export const CASINO_STAT_KEYS = ['capacity', 'machines', 'tables', 'trafficPerMin', 'cardConversion', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'hopperCap', 'autoCollect', 'prestige', 'heat'];
+export const CASINO_STAT_KEYS = ['machines', 'tables', 'trafficPerMin', 'cardConversion', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'hopperCap', 'autoCollect', 'prestige', 'heat'];
 export const PLAYER_STAT_KEYS = ['walkSpeed', 'cardWidth', 'cardTime', 'cardConversion', 'stackSize', 'cashTime', 'dealerMargin', 'dealerBet', 'dealerSpeed'];
 
 function freshState() {

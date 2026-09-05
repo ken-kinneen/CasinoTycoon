@@ -65,13 +65,12 @@ export class CustomerManager {
   }
 
   spawn() {
-    const st = this.game.stats;
-    if (this.customers.length >= st.capacity) return false;
+    const w = this.world;
+    if (!w.freeMachine() && !w.freeTableSeat()) return false;
     const type = this.rollType();
     const difficulty = rollDifficulty(type);
     const group = makeCustomer(type);
     applyDifficultyTint(group, difficulty);
-    const w = this.world;
     group.position.copy(w.spawnPoint);
     group.position.x += (Math.random() - 0.5) * 3;
     this.scene.add(group);
