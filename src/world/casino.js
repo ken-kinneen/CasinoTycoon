@@ -84,8 +84,8 @@ export class CasinoWorld {
     const floor = M.box(W, 0.12, D, has('carpet') ? M.texMat(T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]), { roughness: 0.9 }) : M.texMat(carpetTex, { roughness: 0.9 }), 0, 0.06, 0);
     floor.receiveShadow = true; add(floor);
     // marble walkway from the door to the tables + a runner outside
-    const marble = M.mat(0xd8d0c8, { roughness: 0.12, metalness: 0.05, flatShading: false });
-    add(M.box(3.4, 0.13, 6, marble, 0, 0.065, D / 2 - 3)); add(M.box(3.6, 0.02, 6.2, M.GOLD(), 0, 0.125, D / 2 - 3).translateY(-0.01));
+    const marble = M.mat(0xa8a098, { roughness: 0.55, metalness: 0.02, flatShading: false });
+    add(M.box(3.4, 0.13, 6, marble, 0, 0.065, D / 2 - 3)); add(M.box(3.6, 0.02, 6.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.45, flatShading: false }), 0, 0.125, D / 2 - 3).translateY(-0.01));
     add(M.box(3, 0.05, 6, M.mat(0x8b0000, { roughness: 0.9 }), 0, 0.17, D / 2 + 3.2)); // red carpet outside
     // walls
     const wallMat = M.texMat(T.wallTexture(P.wall[0], P.wall[1], [W / 4, 1]), { roughness: 0.85 });
@@ -121,10 +121,10 @@ export class CasinoWorld {
     dl.children[0].rotation.y = -Math.PI / 2 + 0.2; dl.children[0].position.set(-doorW / 2 + 0.05, 0, doorW / 4 + 0.2);
     dl.children[1].rotation.y = Math.PI / 2 - 0.2; dl.children[1].position.set(doorW / 2 - 0.05, 0, doorW / 4 + 0.2);
     add(M.box(doorW + 1.2, 0.25, 2.2, M.mat(0x8b0000, { roughness: 0.6 }), 0, 3.45, D / 2 + 1.1));
-    add(M.box(doorW + 1.3, 0.06, 2.3, M.GOLD(), 0, 3.6, D / 2 + 1.1));
-    const awningBulbs = new THREE.Mesh(new THREE.PlaneGeometry(doorW + 1.2, 0.14), new THREE.MeshBasicMaterial({ map: T.bulbStripTexture(), transparent: true, toneMapped: false }));
+    add(M.box(doorW + 1.3, 0.06, 2.3, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.45, flatShading: false }), 0, 3.6, D / 2 + 1.1));
+    const awningBulbs = new THREE.Mesh(new THREE.PlaneGeometry(doorW + 1.2, 0.14), new THREE.MeshBasicMaterial({ map: T.bulbStripTexture(), transparent: true, toneMapped: true }));
     awningBulbs.position.set(0, 3.36, D / 2 + 2.21); add(awningBulbs);
-    const doorLight = new THREE.PointLight(0xffd080, 25, 10, 1.8); doorLight.position.set(0, 3.2, D / 2 + 1.2); add(doorLight);
+    const doorLight = new THREE.PointLight(0xffd080, 14, 10, 1.8); doorLight.position.set(0, 3.2, D / 2 + 1.2); add(doorLight);
     for (const x of [-doorW / 2 - 0.6, doorW / 2 + 0.6]) { const r = M.makeVelvetRope(2.6); r.position.set(x + (x < 0 ? 0 : 0), 0.16, D / 2 + 3.2); r.rotation.y = Math.PI / 2; add(r); }
     // windows: boarded or glowing
     for (const x of [-W / 4 - 1, W / 4 + 1]) {
@@ -278,7 +278,7 @@ export class CasinoWorld {
     this.doorOutside = new THREE.Vector3(0, 0, D / 2 + 1.6);
     this.spawnPoint = new THREE.Vector3(0, 0, D / 2 + 8);
     this.aisleZ = tableZ + 2.6;   // front walkway (also the tables' aisle)
-    const mat = M.textPlane('WELCOME · NO REFUNDS · NO EXITS', { w: 3, h: 0.4, color: '#ffd700' }); mat.rotation.x = -Math.PI / 2; mat.position.set(0, 0.14, D / 2 - 0.8); add(mat);
+    const mat = M.textPlane('WELCOME · NO REFUNDS · NO EXITS', { w: 3, h: 0.4, color: '#b89830' }); mat.rotation.x = -Math.PI / 2; mat.position.set(0, 0.14, D / 2 - 0.8); add(mat);
   }
 
   freeMachine() { const free = this.machines.filter(m => !m.occupant); return free.length ? free[Math.floor(Math.random() * free.length)] : null; }

@@ -193,7 +193,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; } }
   else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
-  else if (e.code === 'KeyE') { if (currentZone && !modalOpen) startActivity(currentZone.key); }
+  else if (e.code === 'KeyF') { if (currentZone && !modalOpen) startActivity(currentZone.key); }
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
   else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
   else if (!modalOpen && e.code === 'Digit3') jumpTo('dealer');

@@ -79,6 +79,7 @@ export class Player {
       if (k.KeyA || k.ArrowLeft)  inputX -= 1;    // -X = left
       if (k.KeyD || k.ArrowRight) inputX += 1;
       if (k.KeyQ) this.camYaw += dt * 2;
+      if (k.KeyE) this.camYaw -= dt * 2;
     }
 
     // ---- 2. Derive camera forward & right on the XZ plane -------------------

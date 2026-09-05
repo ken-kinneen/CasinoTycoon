@@ -150,7 +150,7 @@ export function makeDealerTable(feltColor = '#0f5a3a', logo = 'VV') {
   const chipCols = [0xff3333, 0x2b6bff, 0x111111, 0x2ecc71, 0xffffff];
   for (let i = 0; i < 6; i++) g.add(cyl(0.05, 0.05, 0.08, mat(chipCols[i % 5], { roughness: 0.3 }), -0.35 + i * 0.14, 1.04, -0.05, 10));
   g.add(box(0.28, 0.12, 0.2, BLACK_GLOSS(), 0.9, 1.0, 0.0));
-  for (let i = 0; i < 4; i++) { const c = box(0.16, 0.005, 0.22, mat(0xf5f5f5, { roughness: 0.6 }), -0.6 + i * 0.35, 0.96, 0.55); c.rotation.y = (Math.random() - 0.5) * 0.5; g.add(c); }
+  for (let i = 0; i < 4; i++) { const c = box(0.16, 0.005, 0.22, mat(0xd8d0c0, { roughness: 0.85 }), -0.6 + i * 0.35, 0.96, 0.55); c.rotation.y = (Math.random() - 0.5) * 0.5; g.add(c); }
   // scattered chips on the felt
   for (let i = 0; i < 8; i++) g.add(cyl(0.05, 0.05, 0.02 + Math.random() * 0.08, mat(chipCols[i % 5], { roughness: 0.3 }), (Math.random() - 0.5) * 2.2, 0.98, 0.3 + Math.random() * 0.7, 10));
   // stools along the arc
