@@ -383,15 +383,17 @@ export class CasinoWorld {
     if (has('volcano')) { const v = M.makeVolcano(); v.position.set(W / 2 - 5, 0.12, -D / 4); add(v); this.addCollider(W / 2 - 5, -D / 4, 6, 6); this.animated.push({ type: 'volcano', obj: v, t: 0 }); }
     const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
 
-    // --- TABLE PIT: tables flanking the marble walkway ---
+    // --- TABLE PIT: tables flanking the marble walkway, evenly spaced ---
     const nTables = Math.round(st.tables);
     const marbleHalfW = def.id === 'duck' ? 2.0 : 2.5;
-    const tableOffsetX = marbleHalfW + 2.2;
+    const tableOffsetX = marbleHalfW + 2.5;
     const hasFountain = has('fountain');
+
+    const tableZMin = -D / 2 + officeW + 3;
+    const tableZMax = D / 2 - 8;
     const nLeft = Math.ceil(nTables / 2);
     const nRight = nTables - nLeft;
-    const tableZStart = hasFountain ? -3 : -D / 4 + 2;
-    const tableZSpacing = Math.min(5.5, (D / 2 - 4 - Math.abs(tableZStart)) / Math.max(1, nLeft));
+    const tableSpacing = 5.5;
 
     const placeTable = (x, z) => {
       const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, z); add(t);
@@ -399,17 +401,32 @@ export class CasinoWorld {
       const seats = [];
       for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95)); }
       seats.push(new THREE.Vector3(x - 2.2, 0, z + 0.9));
-      this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, z), seats, dealerSpot: new THREE.Vector3(x, 0, z - 1.5), occupants: [], cash: 0, aisleZ: z + 2.6 });
+      this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, z), seats, dealerSpot: new THREE.Vector3(x, 0, z + 2.0), occupants: [], cash: 0, aisleZ: z + 2.6 });
     };
-    for (let i = 0; i < nLeft; i++) placeTable(-tableOffsetX, tableZStart - i * tableZSpacing);
-    for (let i = 0; i < nRight; i++) placeTable(tableOffsetX, tableZStart - i * tableZSpacing);
 
-    if (this.tables.length) this.zones.dealer = { pos: this.tables[0].dealerSpot.clone(), r: 1.5, label: 'Deal a hand', key: 'dealer', icon: 'cards' };
+    const layoutRow = (count, x) => {
+      const totalSpan = (count - 1) * tableSpacing;
+      const rowCenter = (tableZMin + tableZMax) / 2;
+      const z0 = rowCenter - totalSpan / 2;
+      for (let i = 0; i < count; i++) {
+        let z = count === 1 ? rowCenter : z0 + i * tableSpacing;
+        if (hasFountain && Math.abs(z) < 3) z = z < 0 ? -3 : 3;
+        placeTable(x, z);
+      }
+    };
+    if (nLeft > 0) layoutRow(nLeft, -tableOffsetX);
+    if (nRight > 0) layoutRow(nRight, tableOffsetX);
+
+    if (this.tables.length) {
+      const cx = 0, cz = (tableZMin + tableZMax) / 2;
+      const maxDist = Math.max(...this.tables.map(t => Math.hypot(t.pos.x - cx, t.pos.z - cz))) + 2.5;
+      this.zones.dealer = { pos: new THREE.Vector3(cx, 0, cz), r: Math.max(3, maxDist), label: 'Deal a hand', key: 'dealer', icon: 'cards' };
+    }
     if (has('roulette')) {
-      const rx = tableOffsetX;
-      const rz = tableZStart + tableZSpacing * 0.8;
-      const r = M.makeRouletteTable(); r.position.set(Math.min(rx, W / 2 - 4), 0.12, rz); r.rotation.y = Math.PI / 2; add(r);
-      this.addCollider(r.position.x, rz, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel });
+      const lastTable = this.tables[this.tables.length - 1];
+      const rz = lastTable ? lastTable.pos.z + tableSpacing : 0;
+      const r = M.makeRouletteTable(); r.position.set(Math.min(tableOffsetX, W / 2 - 4), 0.12, Math.min(rz, tableZMax)); r.rotation.y = Math.PI / 2; add(r);
+      this.addCollider(r.position.x, r.position.z, 1.8, 3.4); this.animated.push({ type: 'wheel', obj: r.userData.wheel });
     }
 
     // --- SLOT PODS: small clusters of 2-3 against walls and in sections ---

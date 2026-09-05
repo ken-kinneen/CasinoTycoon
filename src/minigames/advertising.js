@@ -45,8 +45,8 @@ export class AdvertisingGame extends MiniGame {
     this.who = victim.name;
     this.markDifficulty = victim.difficulty;
     this.markTier = DIFFICULTY_TIERS[victim.difficulty];
-    this.cardW = 16;
-    this.cardH = 10;
+    this.cardW = 15.5;
+    this.cardH = 9.5;
     this.halfWidth = (26 + this.cardW) * game.stats.cardWidth * this.markTier.channelMul;
     this.holding = false;
     this.done = false;
