@@ -1,6 +1,5 @@
 // Pedestrians: ambient NPCs that walk along the sidewalk outside the casino.
-// Always present as street life. During "pick your mark" mode the player can
-// approach one and press F to select a victim for the advertising minigame.
+// The player can walk up to any of them and press F to start the ad minigame.
 import * as THREE from 'three';
 import { makePedestrian, animatePerson, applyDifficultyTint } from './people.js';
 import { rollDifficulty } from './customers.js';
@@ -18,26 +17,23 @@ export class PedestrianManager {
     this.world = world;
     this.peds = [];
     this.spawnTimer = 1;
-    this.picking = false;
     this.highlighted = null;
-  }
-
-  /** Toggle interactive pick-your-mark mode (pedestrians keep walking either way). */
-  setPicking(on) {
-    this.picking = on;
-    if (!on) {
-      if (this.highlighted && this.highlighted.group.userData.diffIndicator) {
-        this.highlighted.group.userData.diffIndicator.material.opacity = 0.85;
-        this.highlighted.group.userData.diffIndicator.scale.setScalar(1);
-      }
-      this.highlighted = null;
-    }
   }
 
   clearAll() {
     for (const p of this.peds) this.scene.remove(p.group);
     this.peds = [];
     this.highlighted = null;
+  }
+
+  /** Remove a specific pedestrian (e.g. after selecting them as a mark). */
+  remove(ped) {
+    const i = this.peds.indexOf(ped);
+    if (i !== -1) {
+      this.scene.remove(ped.group);
+      this.peds.splice(i, 1);
+      if (this.highlighted === ped) this.highlighted = null;
+    }
   }
 
   spawn() {
@@ -47,9 +43,6 @@ export class PedestrianManager {
     const type = group.userData.pedType;
     const difficulty = rollDifficulty(type);
     applyDifficultyTint(group, difficulty);
-
-    // hide the difficulty dot during normal walking — only visible in pick mode
-    if (group.userData.diffIndicator) group.userData.diffIndicator.visible = this.picking;
 
     const goRight = Math.random() < 0.5;
     const startX = goRight ? -W / 2 - 18 : W / 2 + 18;
@@ -79,7 +72,7 @@ export class PedestrianManager {
     this.peds.push(ped);
   }
 
-  /** Find the nearest interactable pedestrian to the player position. */
+  /** Find the nearest pedestrian within interaction range. */
   nearest(playerPos) {
     let best = null, bestDist = INTERACT_RADIUS;
     for (const p of this.peds) {
@@ -92,23 +85,18 @@ export class PedestrianManager {
   }
 
   update(dt, playerPos) {
-    // always spawn & move pedestrians
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = SPAWN_INTERVAL_MIN + Math.random() * (SPAWN_INTERVAL_MAX - SPAWN_INTERVAL_MIN);
       this.spawn();
     }
 
-    // highlighting only in pick mode
-    if (this.picking && playerPos) {
-      const prev = this.highlighted;
-      this.highlighted = this.nearest(playerPos);
-      if (prev !== this.highlighted && prev && prev.group.userData.diffIndicator) {
-        prev.group.userData.diffIndicator.material.opacity = 0.85;
-        prev.group.userData.diffIndicator.scale.setScalar(1);
-      }
-    } else {
-      this.highlighted = null;
+    const prev = this.highlighted;
+    this.highlighted = playerPos ? this.nearest(playerPos) : null;
+
+    if (prev !== this.highlighted && prev && prev.group.userData.diffIndicator) {
+      prev.group.userData.diffIndicator.material.opacity = 0.85;
+      prev.group.userData.diffIndicator.scale.setScalar(1);
     }
 
     for (let i = this.peds.length - 1; i >= 0; i--) {
@@ -116,10 +104,6 @@ export class PedestrianManager {
       const g = p.group;
       const goRight = p.endX > p.startX;
 
-      // show/hide difficulty dots based on pick mode
-      if (g.userData.diffIndicator) g.userData.diffIndicator.visible = this.picking;
-
-      // stop behavior
       if (p.stopAt !== undefined && !p.stopped) {
         if ((goRight && g.position.x >= p.stopAt) || (!goRight && g.position.x <= p.stopAt)) {
           p.stopped = true;
@@ -143,7 +127,6 @@ export class PedestrianManager {
         animatePerson(g, dt, { walking: true, walkT: p.walkT, drunk: p.type === 'drunk' });
       }
 
-      // pulse the highlighted ped's indicator
       if (p === this.highlighted) {
         const ind = g.userData.diffIndicator;
         if (ind) {
@@ -153,7 +136,6 @@ export class PedestrianManager {
         }
       }
 
-      // despawn when off-screen
       if ((goRight && g.position.x > p.endX) || (!goRight && g.position.x < p.endX)) {
         this.scene.remove(g);
         this.peds.splice(i, 1);

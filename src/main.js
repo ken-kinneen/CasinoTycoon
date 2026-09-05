@@ -35,7 +35,7 @@ ledger.onHide = () => { modalOpen = false; };
 let started = false;
 let activeGame = null;
 let modalOpen = true; // intro is open
-let pickingMark = false;
+let nearbyPed = null;
 let inspectionTimer = 90;
 let quipTimer = 30;
 let saveTimer = 10;
@@ -121,17 +121,18 @@ function start() {
   }
 }
 
-function updatePlayerName() {
+function updateDisplayNames() {
   const name = game.s.playerName;
   $('portrait-name').textContent = name.toUpperCase();
   $('stats-player-name').textContent = name.toUpperCase();
   $('intro-name').textContent = name;
+  $('intro-casino').textContent = game.casinoDisplayName(0);
 }
-updatePlayerName();
+updateDisplayNames();
 
 if (hasSave) start();
 $('intro-start').onclick = start;
-$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); updatePlayerName(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
+$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); updateDisplayNames(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
 $('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; };
 $('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; };
 $('btn-ledger').onclick = () => toggleLedger();
@@ -158,7 +159,7 @@ function closeSettings() {
   const rawName = $('settings-name').value.trim();
   if (rawName && rawName !== game.s.playerName) {
     game.s.playerName = rawName;
-    updatePlayerName();
+    updateDisplayNames();
     changed = true;
   }
   const rawCasino = $('settings-casino-name').value.trim();
@@ -178,10 +179,17 @@ $('btn-settings').onclick = () => { if (!started || activeGame) return; if (!$('
 $('settings-close').onclick = closeSettings;
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
-document.querySelectorAll('.hot').forEach(h => h.onclick = () => { if (!started || modalOpen || activeGame) return; const k = h.dataset.key; if (k === 'office') return toggleLedger('casino'); jumpTo(k); startActivity(k); });
+document.querySelectorAll('.hot').forEach(h => h.onclick = () => {
+  if (!started || modalOpen || activeGame) return;
+  const k = h.dataset.key;
+  if (k === 'office') return toggleLedger('casino');
+  if (k === 'advertising') { jumpTo(k); toast('Walk up to someone on the sidewalk and press F.', 'good'); return; }
+  jumpTo(k); startActivity(k);
+});
 
 function jumpTo(key) {
-  const z = key === 'advertising' ? world.zones.street : key === 'cashrun' ? world.zones.safe : key === 'dealer' ? world.zones.dealer : world.zones.office;
+  if (key === 'advertising') { player.teleport(world.streetPos.x, world.streetPos.z); return; }
+  const z = key === 'cashrun' ? world.zones.safe : key === 'dealer' ? world.zones.dealer : world.zones.office;
   if (z) player.teleport(z.pos.x, z.pos.z);
 }
 function toggleLedger(tab) {
@@ -197,35 +205,18 @@ function showResult(title, html, stamp = 'PAID') {
 }
 function showWin() {
   showResult('You made it to Vegas.', `
-    <p>Palazzo Diablo is yours. A cathedral of neon, forty floors of no checkout desk, and a volcano that scares the insurance guy.</p>
+    <p>${game.casinoDisplayName(2)} is yours. A cathedral of neon, forty floors of no checkout desk, and a volcano that scares the insurance guy.</p>
     <div class="row"><span>Lifetime take</span><span class="big">${fmtMoney(game.s.lifetimeEarned)}</span></div>
     <div class="row"><span>Guests fleeced</span><b>${game.s.lifetimeCustomers}</b></div>
     <p>The dream was never the casino. The dream was the next one. There are 15 more upgrades in this building and ${game.s.playerName}'s name isn't in lights yet.</p>
     <div class="quip">"They said I'd never make it. They were right. I took it."</div>`, 'VEGAS');
 }
 
-// ---- victim selection (advertising) -------------------------------------------
-function enterPickMode() {
-  if (pickingMark || activeGame || modalOpen) return;
-  pickingMark = true;
-  pedMgr.setPicking(true);
-  hud.setPrompt('Approach a mark and press F', 'advertising');
-  toast('Pick your victim. Walk the sidewalk and press F near someone.', 'good');
-  quip(['Fresh meat on the sidewalk. Pick a good one.', 'Time to choose a victim. I mean, a "valued future guest."', 'So many wallets. So little time.'][Math.floor(Math.random() * 3)]);
-}
-function exitPickMode() {
-  pickingMark = false;
-  pedMgr.setPicking(false);
-  hud.setPrompt(null, null);
-}
-function pickMark() {
-  const ped = pedMgr.highlighted;
-  if (!ped) { toast('Get closer to someone on the sidewalk.', 'bad'); return; }
+// ---- activities ---------------------------------------------------------------
+function launchAdGame(ped) {
+  if (activeGame || modalOpen) return;
   const victim = { type: ped.type, difficulty: ped.difficulty, name: ped.name };
-  exitPickMode();
-  launchAdGame(victim);
-}
-function launchAdGame(victim) {
+  pedMgr.remove(ped);
   player.enabled = false;
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
   activeGame = new AdvertisingGame(game, victim);
@@ -238,11 +229,9 @@ function launchAdGame(victim) {
   activeGame.open(`Click the card, guide it through the gap into the pocket. ${Math.round(game.stats.cardTime)} seconds.`);
 }
 
-// ---- activities ---------------------------------------------------------------
 function startActivity(key) {
   if (activeGame || modalOpen) return;
   if (key === 'office') { toggleLedger('casino'); return; }
-  if (key === 'advertising') { enterPickMode(); return; }
   if (key === 'cashrun' && game.s.machineCash < 1) { toast('The hoppers are empty. Get some guests on the machines first.', 'bad'); quip('Nothing to haul. Get people in here.'); return; }
   if (key === 'dealer' && !customers.tablePlayers().length) { toast('Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.', 'bad'); quip('An empty table. My least favourite kind.'); return; }
   player.enabled = false;
@@ -271,17 +260,16 @@ function startActivity(key) {
 // ---- keys ---------------------------------------------------------------------
 window.addEventListener('keydown', e => {
   if (!started || activeGame) return;
-  if (pickingMark) {
-    if (e.code === 'Escape') { exitPickMode(); toast('Nevermind. The marks can wait.', 'bad'); }
-    else if (e.code === 'KeyF') pickMark();
-    return;
-  }
   if (e.code === 'KeyU') { if (!modalOpen || ledger.open) toggleLedger(); }
   else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; } }
   else if (e.code === 'Escape') { if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
   else if (e.code === 'KeyM') { music.toggleMute(); updateSettingsUI(); }
-  else if (e.code === 'KeyF') { if (currentZone && !modalOpen) startActivity(currentZone.key); }
+  else if (e.code === 'KeyF') {
+    if (modalOpen) return;
+    if (nearbyPed) { launchAdGame(nearbyPed); }
+    else if (currentZone) startActivity(currentZone.key);
+  }
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
   else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
   else if (!modalOpen && e.code === 'Digit3') jumpTo('dealer');
@@ -313,14 +301,10 @@ function frame() {
   if (started) pedMgr.update(dt, player.pos);
   if (started && !activeGame && !modalOpen) {
     player.enabled = true;
-    if (pickingMark) {
-      const ped = pedMgr.highlighted;
-      if (ped) {
-        const tier = ped.difficulty.charAt(0).toUpperCase() + ped.difficulty.slice(1);
-        hud.setPrompt(`[F] Slip a card to ${ped.name} (${tier})`, 'advertising');
-      } else {
-        hud.setPrompt('Walk up to a passerby and press F  ·  ESC to cancel', 'advertising');
-      }
+    nearbyPed = pedMgr.highlighted;
+    if (nearbyPed) {
+      const tier = nearbyPed.difficulty.charAt(0).toUpperCase() + nearbyPed.difficulty.slice(1);
+      hud.setPrompt(`Slip a card to ${nearbyPed.name} (${tier})`, 'advertising');
     } else {
       currentZone = null; let best = Infinity;
       for (const z of Object.values(world.zones)) { const d = player.pos.distanceTo(z.pos); if (d < z.r && d < best) { best = d; currentZone = z; } }
@@ -329,6 +313,7 @@ function frame() {
     for (const g of zoneRings) { const near = currentZone && Math.abs(g.position.x - currentZone.pos.x) < 0.01 && Math.abs(g.position.z - currentZone.pos.z) < 0.01; g.userData.ring.material.opacity = (near ? 0.9 : 0.45) + Math.sin(time * 3) * 0.15; g.userData.inner.material.opacity = near ? 0.16 : 0.06; g.rotation.y = time * 0.3; }
   } else if (started) {
     player.enabled = false;
+    nearbyPed = null;
   }
   if (started) {
     game.s.playTime += dt;

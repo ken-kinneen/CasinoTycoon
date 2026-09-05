@@ -275,7 +275,7 @@ export class CasinoWorld {
     // =====================================================================
     // ZONES & NAVIGATION
     // =====================================================================
-    this.zones.street = { pos: new THREE.Vector3(0, 0, D / 2 + 3.6), r: 2.2, label: 'Slip ads into pockets', key: 'advertising', icon: 'card' };
+    this.streetPos = new THREE.Vector3(0, 0, D / 2 + 3.6);
     this.doorInside = new THREE.Vector3(0, 0, D / 2 - 1.6);
     this.doorOutside = new THREE.Vector3(0, 0, D / 2 + 1.6);
     this.spawnPoint = new THREE.Vector3(0, 0, D / 2 + 8);
