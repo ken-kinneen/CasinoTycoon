@@ -191,14 +191,14 @@ export class CasinoWorld {
     // framed paintings along the back wall
     { let seed = 0;
       for (let x = -W / 2 + 5; x < W / 2 - 5; x += W / (def.id === 'duck' ? 2.5 : 4)) {
-        if (Math.abs(x - W / 4) < 1.8) continue;
         const p = M.makeWallPainting(seed++);
         p.position.set(x, 2.8, -D / 2 + 0.24); add(p);
       }
     }
-    // paintings along the right wall (between sconces)
+    // paintings along the right wall (between sconces, skip near the fireplace)
     { let seed = 4;
       for (let z = -D / 2 + 4; z < D / 2 - 4; z += D / (def.id === 'duck' ? 2 : 3)) {
+        if (Math.abs(z - (-D / 4)) < 1.6) continue;
         const p = M.makeWallPainting(seed++);
         p.position.set(W / 2 - 0.22, 2.8, z); p.rotation.y = -Math.PI / 2; add(p);
       }
