@@ -18,6 +18,49 @@ function canvasTex(key, w, h, draw, { repeat = [1, 1], srgb = true, wrap = true 
 
 function seeded(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
+/** Low-pile commercial carpet — dense fibrous texture, no grid. */
+export function plainCarpetTexture(base = '#3a1a2a', fleck1 = '#5a2a3a', fleck2 = '#2a0a18', repeat = [6, 6]) {
+  return canvasTex(`plaincarpet2|${base}|${fleck1}|${fleck2}`, 512, 512, (ctx, w, h) => {
+    const rnd = seeded(42);
+    ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+    // woven fiber lines — dense horizontal + slight vertical cross-weave
+    for (let y = 0; y < h; y += 2) {
+      ctx.fillStyle = `rgba(0,0,0,${0.02 + rnd() * 0.05})`;
+      ctx.fillRect(0, y, w, 1);
+    }
+    for (let x = 0; x < w; x += 4) {
+      ctx.fillStyle = `rgba(0,0,0,${rnd() * 0.03})`;
+      ctx.fillRect(x, 0, 1, h);
+    }
+    // dense flecks — fiber tufts across the surface
+    for (let i = 0; i < 6000; i++) {
+      const c = rnd() > 0.5 ? fleck1 : fleck2;
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.1 + rnd() * 0.2;
+      const fw = 1 + rnd() * 2, fh = 1 + rnd() * 3;
+      ctx.fillRect(rnd() * w, rnd() * h, fw, fh);
+    }
+    // lighter fiber highlights
+    for (let i = 0; i < 2000; i++) {
+      ctx.fillStyle = fleck1;
+      ctx.globalAlpha = 0.06 + rnd() * 0.1;
+      ctx.fillRect(rnd() * w, rnd() * h, 1, 2 + rnd() * 4);
+    }
+    ctx.globalAlpha = 1;
+    // subtle wear patches — soft blotchy shading
+    for (let i = 0; i < 14; i++) {
+      const grad = ctx.createRadialGradient(
+        rnd() * w, rnd() * h, 0,
+        rnd() * w, rnd() * h, 30 + rnd() * 80
+      );
+      grad.addColorStop(0, `rgba(0,0,0,${0.04 + rnd() * 0.06})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+    }
+  }, { repeat });
+}
+
 /** Casino carpet: dark ground with swirling paisley-ish loops in an accent colour. */
 export function carpetTexture(base = '#3a0b1e', accent = '#c99a2e', accent2 = '#7a2a5a', seed = 1, repeat = [8, 6]) {
   return canvasTex(`carpet|${base}|${accent}|${accent2}|${seed}`, 512, 512, (ctx, w, h) => {
@@ -74,6 +117,71 @@ export function brickTexture(color = '#3a2a26', mortar = '#1a1412', repeat = [6,
     }
     for (let i = 0; i < 800; i++) { ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.3})`; ctx.fillRect(Math.random() * w, Math.random() * h, 3, 2); }
   }, { repeat });
+}
+
+/** Cream/tan tile facade — horizontal courses of light tile with darker grout. */
+export function tileFacadeTexture(base = '#d8c8a8', grout = '#a09080', repeat = [4, 3]) {
+  return canvasTex(`tilefacade|${base}|${grout}`, 512, 512, (ctx, w, h) => {
+    ctx.fillStyle = grout; ctx.fillRect(0, 0, w, h);
+    const tw = 80, th = 24;
+    const rnd = seeded(19);
+    for (let y = 0; y < h; y += th) {
+      const off = (Math.floor(y / th) % 2) * tw / 2;
+      for (let x = -tw; x < w + tw; x += tw) {
+        const r = 216 + (rnd() * 20 - 10) | 0;
+        const g = 200 + (rnd() * 20 - 10) | 0;
+        const b = 168 + (rnd() * 20 - 10) | 0;
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(x + off + 1, y + 1, tw - 2, th - 2);
+      }
+    }
+    for (let i = 0; i < 500; i++) { ctx.fillStyle = `rgba(0,0,0,${rnd() * 0.15})`; ctx.fillRect(rnd() * w, rnd() * h, 3, 3); }
+    for (let i = 0; i < 200; i++) { ctx.fillStyle = `rgba(80,70,50,${rnd() * 0.12})`; ctx.fillRect(rnd() * w, rnd() * h, 4 + rnd() * 6, 2 + rnd() * 4); }
+  }, { repeat });
+}
+
+/** Cracked/dirty glass pane texture for abandoned windows. */
+export function brokenGlassTexture(tint = '#8ab4b8', repeat = [1, 1]) {
+  return canvasTex(`brokenglass|${tint}`, 256, 256, (ctx, w, h) => {
+    ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(0, 0, w, h);
+    const rnd = seeded(55);
+    // reflective patches
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = `rgba(180,220,230,${0.1 + rnd() * 0.15})`;
+      ctx.fillRect(rnd() * w, rnd() * h, 40 + rnd() * 80, 30 + rnd() * 60);
+    }
+    // crack lines radiating from impact points
+    for (let p = 0; p < 3; p++) {
+      const cx = 40 + rnd() * (w - 80), cy = 40 + rnd() * (h - 80);
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5;
+      for (let r = 0; r < 8; r++) {
+        const a = rnd() * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        let x = cx, y = cy;
+        for (let s = 0; s < 4; s++) {
+          x += Math.cos(a + (rnd() - 0.5) * 0.6) * (15 + rnd() * 25);
+          y += Math.sin(a + (rnd() - 0.5) * 0.6) * (15 + rnd() * 25);
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }
+    // dark holes (broken-out sections)
+    for (let i = 0; i < 2; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${0.7 + rnd() * 0.3})`;
+      ctx.beginPath();
+      const cx = 50 + rnd() * (w - 100), cy = 50 + rnd() * (h - 100);
+      ctx.moveTo(cx, cy);
+      for (let v = 0; v < 6; v++) ctx.lineTo(cx + (rnd() - 0.5) * 80, cy + (rnd() - 0.5) * 60);
+      ctx.closePath(); ctx.fill();
+    }
+    // grime streaks
+    for (let i = 0; i < 10; i++) {
+      ctx.strokeStyle = `rgba(60,50,40,${0.08 + rnd() * 0.1})`; ctx.lineWidth = 2 + rnd() * 4;
+      ctx.beginPath(); ctx.moveTo(rnd() * w, 0); ctx.lineTo(rnd() * w, h); ctx.stroke();
+    }
+  }, { wrap: false });
 }
 
 export function pinstripeTexture(color = '#2a1440', stripe = 'rgba(255,255,255,0.18)') {

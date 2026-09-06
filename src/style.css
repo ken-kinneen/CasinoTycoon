@@ -52,6 +52,20 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .sb-spacer { flex: 1; min-height: 8px; }
 .sb-divider { height: 1px; margin: 2px 16px; background: linear-gradient(90deg, transparent, rgba(245,197,66,0.12), transparent); }
 
+/* next goals panel in sidebar */
+#sb-next-goals.hidden { display: none; }
+.sb-goal { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; margin: 0 -10px; border-radius: 6px; background: rgba(255,255,255,0.02); }
+.sb-goal + .sb-goal { margin-top: 4px; }
+.sb-goal-hint { font: 600 12px var(--body); color: var(--text); line-height: 1.3; }
+.sb-goal-progress { display: flex; align-items: center; gap: 8px; }
+.sb-goal-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.sb-goal-fill { height: 100%; background: linear-gradient(90deg, var(--gold), #ffd54f); border-radius: 3px; transition: width 0.5s ease-out; min-width: 2px; }
+.sb-goal-pct { font: 700 11px var(--body); color: var(--gold); min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.sb-goal-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sb-goal-label { font: 500 10px var(--body); color: var(--dim); letter-spacing: 0.3px; font-variant-numeric: tabular-nums; }
+.sb-goal-rewards { font: 500 9px var(--body); color: var(--gold); opacity: 0.65; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+.sb-goal-rewards .ico { width: 10px; height: 10px; }
+
 /* money in ledger (kept for ledger modal) */
 .money-label { font: 600 10px var(--body); letter-spacing: 3px; color: var(--dim); }
 .money { font: 34px/1 var(--display); letter-spacing: 1px; background: var(--gold-grad); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.5)); }
@@ -82,6 +96,11 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 #portrait-name { color: var(--text); }
 
 /* goal progress bar */
+.sb-progress-wrap { width: 100%; display: flex; align-items: center; gap: 6px; margin-top: 1px; }
+.sb-progress-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.sb-progress-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.4s ease-out; }
+.sb-progress-label { font: 500 9px var(--body); color: var(--dim); white-space: nowrap; letter-spacing: 0.3px; flex-shrink: 0; }
+.pp-milestones .sb-stat-row { flex-wrap: wrap; }
 
 
 /* activity buttons — full width rows */
@@ -195,6 +214,17 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 /* persistent messages (e.g. tutorial objectives) */
 .msg-persistent { border-color: rgba(56, 232, 255, 0.15); }
 .msg-hint { font: 500 12px/1.3 var(--body); color: var(--dim); margin-top: 3px; }
+
+/* dismissable messages */
+.msg-dismissable { position: relative; padding-right: 32px; }
+.msg-dismiss {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; cursor: pointer;
+  color: var(--dim); padding: 2px; line-height: 1;
+  transition: color 0.15s;
+}
+.msg-dismiss:hover { color: var(--text); }
+.msg-dismiss svg { width: 14px; height: 14px; }
 
 /* fade out */
 .msg-item.msg-fade { opacity: 0; transform: translateY(-8px); transition: opacity 0.4s ease, transform 0.4s ease; }
@@ -698,7 +728,7 @@ button.buy.owned { background: #1f4a30; color: #8ff0b8; }
 #minigame-canvas { width: min(960px, 92vw); aspect-ratio: 960 / 600; height: auto; max-height: 78vh; border: 1px solid rgba(245,197,66,0.3); border-radius: 6px; cursor: crosshair; display: block; background: #0c0a12; }
 
 /* ---- furniture info panel -------------------------------------------------------- */
-#editor-info { position: fixed; left: auto; top: auto; bottom: 100px; right: 18px; width: 240px; padding: 14px 16px; z-index: 10; pointer-events: auto; animation: fadeup 0.15s ease-out; }
+#editor-info { position: fixed; left: auto; top: auto; bottom: 100px; right: 18px; width: 240px; padding: 14px 16px; z-index: 50; pointer-events: auto; animation: fadeup 0.15s ease-out; }
 @keyframes fadeup { from { opacity: 0; transform: translateY(8px); } }
 .editor-info-type { font: 600 10px var(--body); letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; }
 .editor-info-name { font: 24px var(--display); color: #fff; letter-spacing: 1px; margin: 2px 0 8px; }

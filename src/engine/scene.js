@@ -3,7 +3,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 
 export function createRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -30,9 +30,9 @@ export function createScene(renderer) {
   const moon = new THREE.DirectionalLight(0x7080ff, 1.4);
   moon.position.set(25, 40, 15);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(1024, 1024);
-  moon.shadow.camera.left = -45; moon.shadow.camera.right = 45;
-  moon.shadow.camera.top = 45; moon.shadow.camera.bottom = -45;
+  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.camera.left = -30; moon.shadow.camera.right = 30;
+  moon.shadow.camera.top = 30; moon.shadow.camera.bottom = -30;
   moon.shadow.camera.near = 1; moon.shadow.camera.far = 140;
   moon.shadow.bias = -0.0008;
   scene.add(moon);

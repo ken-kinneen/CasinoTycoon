@@ -8,11 +8,10 @@
 //  3  nobody        — cutscene: nobody's coming
 //  4  advertise     — slip a card on the sidewalk
 //  5  first_guest   — the mark arrives
-//  6  deal_roulette — deal on the roulette table, stay until you win
-//  7  buy_slot      — earned enough to buy a slot machine
-//  8  place_slot    — place the slot machine on the floor
-//  9  earn_500      — earn $500 lifetime to hit the milestone
-// 10  done          — tutorial complete, free play
+//  6  deal_roulette — deal on the roulette table (first game)
+//  7  place_slot    — achievement granted a slot machine; place it
+//  8  earn_500      — earn $500 lifetime to hit the milestone
+//  9  done          — tutorial complete, free play
 
 import { game } from '../state.js';
 import { showMessage, dismissMessage, isMessagesEnabled } from '../ui/messages.js';
@@ -25,10 +24,9 @@ export const TUTORIAL_STEPS = [
   { id: 'advertise',     index: 4 },
   { id: 'first_guest',   index: 5 },
   { id: 'deal_roulette', index: 6 },
-  { id: 'buy_slot',      index: 7 },
-  { id: 'place_slot',    index: 8 },
-  { id: 'earn_500',      index: 9 },
-  { id: 'done',          index: 10 },
+  { id: 'place_slot',    index: 7 },
+  { id: 'earn_500',      index: 8 },
+  { id: 'done',          index: 9 },
 ];
 
 export const TUTORIAL_PROMPTS = {
@@ -38,8 +36,7 @@ export const TUTORIAL_PROMPTS = {
   advertise:     { text: 'Go outside and slip someone a card.', hint: 'Press 1 or walk to the sidewalk and press F.' },
   first_guest:   { text: 'Your mark is on the way. Wait for them.', hint: 'They should arrive any moment now.' },
   deal_roulette: { text: 'Get to the roulette table and deal.', hint: 'Click the table, then press Deal in the popup.' },
-  buy_slot:      { text: 'Time for passive income. Buy a slot machine.', hint: 'Press U to open the Shop.' },
-  place_slot:    { text: 'Place the slot machine on the floor.', hint: 'Open Build (G), then click it in your inventory.' },
+  place_slot:    { text: 'You earned a slot machine! Place it on the floor.', hint: 'Open Build (G), then click it in your inventory.' },
   earn_500:      { text: 'Keep hustling. Earn $500 to prove yourself.', hint: 'Slots earn passively. Deal roulette. Slip more cards.' },
 };
 
@@ -58,12 +55,12 @@ export const TUTORIAL_CUTSCENE_TEXT = {
     '"There they are. Walking right through the door."',
     '"One sucker at a time. That\'s how empires start."',
   ],
-  roulette_win: [
-    '"That\'s how it\'s done. The wheel does what I tell it."',
-    '"Now I need something that makes money while I sleep. A slot machine."',
+  roulette_done: [
+    '"First time behind the wheel. Not bad."',
+    '"Wait — I just earned myself a slot machine. Passive income, baby."',
   ],
   slot_placed: [
-    '"Passive income. Beautiful. Now I\'ve got a table AND a machine."',
+    '"A table AND a machine. Now we\'re talking."',
     '"Time to build this dump into something real."',
   ],
 };

@@ -14,9 +14,9 @@ export const MSG_FROM = {
   casino:   { icon: 'building', label: 'Casino',     cls: 'msg-from-casino' },
   player:   { icon: 'person',   label: 'You',        cls: 'msg-from-player' },
   stat:     { icon: 'stats',    label: 'Stats',       cls: 'msg-from-stat' },
-  inspect:  { icon: 'shield',   label: 'Inspector',   cls: 'msg-from-inspect' },
+  inspect:  { icon: 'shield',   label: 'Inspector',   cls: 'msg-from-inspect', dismiss: true },
   system:   { icon: 'gear',     label: 'System',      cls: 'msg-from-system' },
-  trophy:   { icon: 'trophy',   label: 'Achievement', cls: 'msg-from-trophy' },
+  trophy:   { icon: 'trophy',   label: 'Achievement', cls: 'msg-from-trophy',  dismiss: true },
   tutorial: { icon: 'help',     label: 'Tutorial',    cls: 'msg-from-tutorial' },
 };
 
@@ -53,30 +53,45 @@ function buildAvatar(from) {
  * @param {string}  text             - message body (may contain HTML for stat formatting)
  * @param {object}  [opts]
  * @param {string}  [opts.from]      - sender key from MSG_FROM (default 'system')
- * @param {number}  [opts.duration]  - ms before auto-fade (default 4500)
+ * @param {number}  [opts.duration]  - ms before auto-fade (default 4500, ignored when dismiss is true)
  * @param {boolean} [opts.persistent] - if true, stays until dismissMessage() is called
+ * @param {boolean} [opts.dismiss]   - if true, requires click to dismiss (overrides sender default)
  * @param {string}  [opts.kind]      - extra CSS class on .msg-item
  */
-export function showMessage(text, { kind = '', from = 'system', duration = DEFAULT_DURATION, persistent = false } = {}) {
+export function showMessage(text, { kind = '', from = 'system', duration = DEFAULT_DURATION, persistent = false, dismiss } = {}) {
   if (!enabled) return;
   const box = $('message-banner');
   if (!box) return;
 
   const sender = MSG_FROM[from] || MSG_FROM.system;
   const isPlayer = from === 'player';
+  const needsDismiss = dismiss !== undefined ? dismiss : !!sender.dismiss;
 
   const el = document.createElement('div');
   el.className = `msg-item ${kind} ${sender.cls}`.trim();
   if (persistent) el.classList.add('msg-persistent');
+  if (needsDismiss) el.classList.add('msg-dismissable');
 
   const senderLabel = isPlayer ? (game.s.playerName || 'Victor Vane') : sender.label;
+
+  const dismissBtn = needsDismiss
+    ? `<button class="msg-dismiss" aria-label="Dismiss">${ICONS.close || '✕'}</button>`
+    : '';
 
   el.innerHTML =
     buildAvatar(from) +
     `<div class="msg-body">` +
       `<div class="msg-sender">${senderLabel}</div>` +
       `<div class="msg-content">${text}</div>` +
-    `</div>`;
+    `</div>` +
+    dismissBtn;
+
+  if (needsDismiss) {
+    el.querySelector('.msg-dismiss').onclick = () => {
+      el.classList.add('msg-fade');
+      setTimeout(() => el.remove(), 350);
+    };
+  }
 
   if (persistent) {
     dismissMessage();
@@ -91,10 +106,12 @@ export function showMessage(text, { kind = '', from = 'system', duration = DEFAU
   }
   box.appendChild(el);
 
-  setTimeout(() => {
-    el.classList.add('msg-fade');
-    setTimeout(() => el.remove(), 500);
-  }, duration);
+  if (!needsDismiss) {
+    setTimeout(() => {
+      el.classList.add('msg-fade');
+      setTimeout(() => el.remove(), 500);
+    }, duration);
+  }
 }
 
 /** Remove any persistent message (e.g. tutorial objective). */

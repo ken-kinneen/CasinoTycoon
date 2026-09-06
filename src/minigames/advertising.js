@@ -2,19 +2,11 @@
 // passer-by's pocket through a winding gap without touching the fabric.
 // One attempt per person — succeed or fail, then back to the street.
 // Layout: left panel = character portrait + stats, right = clean game area.
-import { MiniGame, GW, GH, PAL, BODY } from './base.js';
+import * as THREE from 'three';
+import { MiniGame, GW, GH, PAL } from './base.js';
 import { DIFFICULTY_TIERS } from '../world/customers.js';
-
-const JACKETS = [
-  { coat: '#4a3a24', dark: '#2e2214', trim: '#6b5334' },
-  { coat: '#22374f', dark: '#152232', trim: '#33506f' },
-  { coat: '#38254f', dark: '#221532', trim: '#503470' },
-  { coat: '#1f4a38', dark: '#122e22', trim: '#2e6b50' },
-  { coat: '#4f2020', dark: '#301313', trim: '#6f3030' },
-  { coat: '#2b2b33', dark: '#18181e', trim: '#41414d' },
-  { coat: '#5b4620', dark: '#382b13', trim: '#7d6330' },
-];
-const SKINS = ['#d9a679', '#b3805a', '#8a5c3c', '#e8c39e', '#6f472e'];
+import { makeOwner } from '../world/people.js';
+import { quip } from '../ui/hud.js';
 
 const LEFT_W = 280;
 const GAME_X = LEFT_W + 16;
@@ -56,13 +48,125 @@ export class AdvertisingGame extends MiniGame {
     this.msg = ''; this.msgT = 0; this.msgGood = true;
     this.sparks = [];
     this.pop = 0;
-    this.breathe = 0;
     this.buildPath();
 
-    this.jacket = JACKETS[Math.floor(Math.random() * JACKETS.length)];
-    this.skin = SKINS[Math.floor(Math.random() * SKINS.length)];
-    this.hairSeed = Math.random();
-    this.eyeDir = 0;
+    this._init3DPreview();
+  }
+
+  _init3DPreview() {
+    const PW = 260, PH = 300;
+    this._pvCanvas3D = document.createElement('canvas');
+    this._pvCanvas3D.width = PW; this._pvCanvas3D.height = PH;
+    this._pvRenderer = new THREE.WebGLRenderer({ canvas: this._pvCanvas3D, alpha: true, antialias: true });
+    this._pvRenderer.setSize(PW, PH);
+    this._pvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this._pvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this._pvRenderer.toneMappingExposure = 1.0;
+
+    this._pvScene = new THREE.Scene();
+    this._pvScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const key = new THREE.DirectionalLight(0xffd080, 2.0);
+    key.position.set(2, 3, 3);
+    this._pvScene.add(key);
+    const rim = new THREE.DirectionalLight(0xff2e88, 0.6);
+    rim.position.set(-2, 1, -2);
+    this._pvScene.add(rim);
+    const fill = new THREE.DirectionalLight(0x38e8ff, 0.3);
+    fill.position.set(-1, 2, 1);
+    this._pvScene.add(fill);
+
+    this._pvCamera = new THREE.PerspectiveCamera(30, PW / PH, 0.1, 100);
+    this._pvCamera.position.set(0, 1.0, 4.8);
+    this._pvCamera.lookAt(0, 0.8, 0);
+
+    this._pvModel = makeOwner(this.game.s.skills, this.game.wardrobeMap());
+    this._pvModel.rotation.y = 0.3;
+    this._pvScene.add(this._pvModel);
+
+    this._pvAngle = 0.3;
+    this._pvRaycaster = new THREE.Raycaster();
+    this._pvReactions = [];
+
+    this._onClickBound = (e) => this._onPlayerClick(e);
+    this.canvas.addEventListener('click', this._onClickBound);
+  }
+
+  _onPlayerClick(e) {
+    if (!this._pvModel) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left) * GW / rect.width;
+    const canvasY = (e.clientY - rect.top) * GH / rect.height;
+
+    const pvX = 10, pvY = 80;
+    const PW = 260, PH = 300;
+    if (canvasX < pvX || canvasX > pvX + PW || canvasY < pvY || canvasY > pvY + PH) return;
+
+    const mouse = new THREE.Vector2(
+      ((canvasX - pvX) / PW) * 2 - 1,
+      -(((canvasY - pvY) / PH) * 2 - 1)
+    );
+    this._pvRaycaster.setFromCamera(mouse, this._pvCamera);
+    const hits = this._pvRaycaster.intersectObjects(this._pvModel.children, true);
+    if (!hits.length) return;
+
+    const hitPart = 'body';
+
+    const QUIPS = [
+      "Hey, I'm working here!", "Quit it!", "Not now!", "Focus!",
+      "Stop poking me.", "What?", "Easy, pal.", "Ow!", "Rude.",
+      "I'm trying to concentrate.", "Hands off!", "Do you mind?",
+    ];
+    quip(QUIPS[Math.floor(Math.random() * QUIPS.length)], 3000);
+    this._pvReactions.push({ part: hitPart, t: 0, duration: 0.5 });
+  }
+
+  _applyReactions(dt) {
+    if (!this._pvModel) return;
+    const u = this._pvModel.userData;
+    for (let i = this._pvReactions.length - 1; i >= 0; i--) {
+      const r = this._pvReactions[i];
+      r.t += dt;
+      const p = Math.min(r.t / r.duration, 1);
+      const wave = Math.sin(p * Math.PI * 4) * (1 - p);
+      const part = u[r.part === 'body' ? 'body' : r.part];
+      if (!part) { this._pvReactions.splice(i, 1); continue; }
+
+      switch (r.part) {
+        case 'head': part.rotation.z = wave * 0.4; part.rotation.x = wave * 0.15; break;
+        case 'armL': part.rotation.x = wave * -1.2; part.rotation.z = wave * 0.3; break;
+        case 'armR': part.rotation.x = wave * -1.2; part.rotation.z = wave * -0.3; break;
+        case 'legL': part.rotation.x = wave * 0.8; break;
+        case 'legR': part.rotation.x = wave * 0.8; break;
+        case 'body': {
+          const leg = u.legR || u.legL;
+          if (leg) leg.rotation.x = wave * -1.0;
+          break;
+        }
+      }
+
+      if (p >= 1) {
+        part.rotation.x = 0; part.rotation.z = 0;
+        this._pvReactions.splice(i, 1);
+      }
+    }
+  }
+
+  _dispose3DPreview() {
+    if (this._pvRenderer) {
+      this._pvRenderer.dispose();
+      this._pvRenderer = null;
+    }
+    if (this._onClickBound) {
+      this.canvas.removeEventListener('click', this._onClickBound);
+      this._onClickBound = null;
+    }
+    this._pvScene = null;
+    this._pvModel = null;
+  }
+
+  finish(result) {
+    this._dispose3DPreview();
+    super.finish(result);
   }
 
   buildPath() {
@@ -109,13 +213,21 @@ export class AdvertisingGame extends MiniGame {
     this.flash = Math.max(0, this.flash - dt * 3);
     this.msgT = Math.max(0, this.msgT - dt);
     this.pop = Math.max(0, this.pop - dt * 2.5);
-    this.breathe += dt;
-    this.eyeDir += (Math.sin(this.t * 0.7) * 3 - this.eyeDir) * dt * 2;
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const p = this.sparks[i];
       p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 420 * dt; p.vx *= 0.97;
       p.life -= dt; if (p.life <= 0) this.sparks.splice(i, 1);
     }
+
+    if (this._pvModel && this._pvRenderer) {
+      this._pvAngle += 0.008;
+      this._pvModel.rotation.y = this._pvAngle;
+      const u = this._pvModel.userData;
+      if (u && u.head) u.head.rotation.y = Math.sin(this.t * 0.7) * 0.2;
+      this._applyReactions(dt);
+      this._pvRenderer.render(this._pvScene, this._pvCamera);
+    }
+
     if (this.done) {
       this.resultTimer -= dt;
       if (this.resultTimer <= 0) this.finish({ deposited: this.success ? 1 : 0, busted: this.success ? 0 : 1 });
@@ -142,108 +254,15 @@ export class AdvertisingGame extends MiniGame {
     }
   }
 
-  /** Front-facing character portrait for the left panel. */
-  drawPortrait(ctx, cx, cy, scale) {
-    const t = this.t, j = this.jacket, sk = this.skin;
-    const s = scale;
-    const bob = Math.sin(this.breathe * 2) * 1.5 * s;
-    ctx.save();
-    ctx.translate(cx, cy + bob);
-
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath(); ctx.ellipse(0, 110 * s, 50 * s, 12 * s, 0, 0, Math.PI * 2); ctx.fill();
-
-    // legs
-    ctx.fillStyle = '#1a1a28';
-    this.roundRect(ctx, -22 * s, 50 * s, 18 * s, 62 * s, 6 * s); ctx.fill();
-    this.roundRect(ctx, 4 * s, 50 * s, 18 * s, 62 * s, 6 * s); ctx.fill();
-    // shoes
-    ctx.fillStyle = '#111';
-    this.roundRect(ctx, -24 * s, 106 * s, 22 * s, 8 * s, 3 * s); ctx.fill();
-    this.roundRect(ctx, 2 * s, 106 * s, 22 * s, 8 * s, 3 * s); ctx.fill();
-
-    // coat body
-    const grad = ctx.createLinearGradient(-45 * s, 0, 45 * s, 0);
-    grad.addColorStop(0, j.dark); grad.addColorStop(0.45, j.coat); grad.addColorStop(1, j.dark);
-    ctx.fillStyle = grad;
-    this.roundRect(ctx, -45 * s, -30 * s, 90 * s, 86 * s, 12 * s); ctx.fill();
-    // shoulder highlight
-    const hl = ctx.createLinearGradient(0, -30 * s, 0, 0);
-    hl.addColorStop(0, this.rgba(j.trim, 0.5)); hl.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = hl;
-    this.roundRect(ctx, -45 * s, -30 * s, 90 * s, 30 * s, 12 * s); ctx.fill();
-    // collar
-    ctx.fillStyle = j.trim;
-    this.roundRect(ctx, -20 * s, -32 * s, 40 * s, 8 * s, 4 * s); ctx.fill();
-    // shirt front
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(-8 * s, -24 * s, 16 * s, 70 * s);
-    // buttons
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, (-10 + i * 18) * s, 2 * s, 0, Math.PI * 2); ctx.fill(); }
-
-    // arms (slight sway)
-    const armSway = Math.sin(t * 1.3) * 3 * s;
-    ctx.fillStyle = j.dark;
-    this.roundRect(ctx, -52 * s, -24 * s, 14 * s, 64 * s, 6 * s); ctx.fill();
-    this.roundRect(ctx, 38 * s, -24 * s, 14 * s, 64 * s, 6 * s); ctx.fill();
-    // hands
-    ctx.fillStyle = sk;
-    ctx.beginPath(); ctx.arc(-45 * s, (42 + armSway) * s, 7 * s, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(45 * s, (42 - armSway) * s, 7 * s, 0, Math.PI * 2); ctx.fill();
-
-    // neck
-    ctx.fillStyle = sk;
-    ctx.fillRect(-7 * s, -42 * s, 14 * s, 14 * s);
-
-    // head
-    ctx.beginPath(); ctx.arc(0, -58 * s, 26 * s, 0, Math.PI * 2);
-    ctx.fillStyle = sk; ctx.fill();
-
-    // hair
-    const hairDark = this.hairSeed > 0.5;
-    ctx.fillStyle = hairDark ? '#20161a' : '#4a3524';
-    ctx.beginPath(); ctx.arc(0, -62 * s, 26 * s, Math.PI, 0); ctx.fill();
-    ctx.fillRect(-26 * s, -68 * s, 52 * s, 12 * s);
-    // ears
-    ctx.fillStyle = sk;
-    ctx.beginPath(); ctx.arc(-26 * s, -56 * s, 5 * s, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(26 * s, -56 * s, 5 * s, 0, Math.PI * 2); ctx.fill();
-
-    // face: eyes that track slightly
-    const ex = this.eyeDir * s;
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.ellipse(-9 * s + ex * 0.3, -58 * s, 5 * s, 6 * s, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(9 * s + ex * 0.3, -58 * s, 5 * s, 6 * s, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#1a1210';
-    ctx.beginPath(); ctx.arc(-9 * s + ex, -58 * s, 2.5 * s, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(9 * s + ex, -58 * s, 2.5 * s, 0, Math.PI * 2); ctx.fill();
-    // eyebrows
-    ctx.strokeStyle = hairDark ? '#20161a' : '#4a3524'; ctx.lineWidth = 2 * s; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(-14 * s, -67 * s); ctx.lineTo(-4 * s, -68 * s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(4 * s, -68 * s); ctx.lineTo(14 * s, -67 * s); ctx.stroke();
-    // nose
-    ctx.fillStyle = this.rgba(sk, 0.7);
-    ctx.beginPath(); ctx.moveTo(-3 * s, -52 * s); ctx.lineTo(0, -44 * s); ctx.lineTo(3 * s, -52 * s); ctx.fill();
-    // mouth
-    ctx.strokeStyle = this.rgba('#5a3020', 0.7); ctx.lineWidth = 1.5 * s;
-    ctx.beginPath(); ctx.arc(0, -40 * s, 7 * s, 0.2, Math.PI - 0.2); ctx.stroke();
-
-    ctx.restore();
-  }
-
-  /** Left panel: character portrait + info */
+  /** Left panel: 3D player model + mark info */
   drawLeftPanel(ctx) {
     const t = this.t;
-    // dark panel background
     ctx.save();
     ctx.fillStyle = 'rgba(8,6,14,0.92)';
     this.roundRect(ctx, 8, 8, LEFT_W - 16, GH - 16, 12); ctx.fill();
     ctx.strokeStyle = this.rgba(this.markTier.color, 0.25); ctx.lineWidth = 1; ctx.stroke();
     ctx.restore();
 
-    // subtle light from above
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const spot = ctx.createRadialGradient(LEFT_W / 2, 60, 10, LEFT_W / 2, 180, 200);
     spot.addColorStop(0, 'rgba(255,226,168,0.08)'); spot.addColorStop(1, 'rgba(0,0,0,0)');
@@ -251,29 +270,28 @@ export class AdvertisingGame extends MiniGame {
     ctx.fillRect(8, 8, LEFT_W - 16, GH - 16);
     ctx.restore();
 
-    // portrait
-    this.drawPortrait(ctx, LEFT_W / 2, 240, 1.6);
+    if (this._pvCanvas3D) {
+      ctx.drawImage(this._pvCanvas3D, 10, 80, 260, 300);
+    }
 
-    // name plate
-    this.panel(ctx, 20, 370, LEFT_W - 40, 90, { accent: this.markTier.color, corner: 12, r: 8 });
-    this.label(ctx, 'the mark', LEFT_W / 2, 388, 10, PAL.dim, 'center');
-    this.neon(ctx, this.who, LEFT_W / 2, 412, 20, PAL.gold, 'center', 10, 1);
-    // difficulty badge
+    this.label(ctx, 'you', LEFT_W / 2, 70, 10, PAL.dim, 'center');
+
+    this.panel(ctx, 20, 395, LEFT_W - 40, 90, { accent: this.markTier.color, corner: 12, r: 8 });
+    this.label(ctx, 'the mark', LEFT_W / 2, 413, 10, PAL.dim, 'center');
+    this.neon(ctx, this.who, LEFT_W / 2, 437, 20, PAL.gold, 'center', 10, 1);
     ctx.save();
     const bw = 66, bx = LEFT_W / 2 - bw / 2;
     ctx.fillStyle = this.rgba(this.markTier.color, 0.18);
-    this.roundRect(ctx, bx, 428, bw, 20, 4); ctx.fill();
+    this.roundRect(ctx, bx, 453, bw, 20, 4); ctx.fill();
     ctx.strokeStyle = this.rgba(this.markTier.color, 0.6); ctx.lineWidth = 1; ctx.stroke();
-    this.label(ctx, this.markTier.label, LEFT_W / 2, 438, 10, this.markTier.color, 'center');
+    this.label(ctx, this.markTier.label, LEFT_W / 2, 463, 10, this.markTier.color, 'center');
     ctx.restore();
 
-    // stats
-    this.panel(ctx, 20, 474, LEFT_W - 40, 68, { accent: PAL.gold, corner: 10, r: 8 });
-    this.label(ctx, 'channel', 40, 498, 10, PAL.dim);
+    this.panel(ctx, 20, 499, LEFT_W - 40, 68, { accent: PAL.gold, corner: 10, r: 8 });
+    this.label(ctx, 'channel', 40, 523, 10, PAL.dim);
     const chanLabel = this.markDifficulty === 'easy' ? 'Wide' : this.markDifficulty === 'hard' ? 'Tight' : 'Normal';
-    this.text(ctx, chanLabel, 40, 518, 22, this.markTier.color, 'left', undefined, 'bold');
+    this.text(ctx, chanLabel, 40, 543, 22, this.markTier.color, 'left', undefined, 'bold');
 
-    // help text at bottom
     ctx.save(); ctx.globalAlpha = 0.5 + Math.sin(t * 3) * 0.2;
     this.label(ctx, 'esc to cancel', LEFT_W / 2, GH - 22, 9, PAL.dim, 'center');
     ctx.restore();

@@ -53,6 +53,7 @@ function freshState() {
     machineCash: 0,            // legacy field, kept for save compat
     lifetimeEarned: 0,
     lifetimeCustomers: 0,
+    lifetimeRouletteSpins: 0,
     playTime: 0,
     won: false,
     achievements: [],           // ids of unlocked achievements
@@ -172,13 +173,17 @@ class GameState {
     return this.s.machineInventory[cid];
   }
 
-  /** Total machines/tables owned via upgrades (placed + inventory). */
+  /** Total machines/tables owned via upgrades and achievements (placed + inventory). */
   ownedSpawnCount(type, casinoId) {
     const cid = casinoId || this.casinoDef.id;
     let n = 0;
     for (const u of CASINO_UPGRADES[cid] || []) {
       if (!this.s.casinoUpgrades[cid]?.includes(u.id) || !u.spawns) continue;
       if (u.spawns.type === type) n += u.spawns.count;
+    }
+    for (const a of ACHIEVEMENTS) {
+      if (!a.spawns || a.spawns.type !== type) continue;
+      if (this.s.achievements.includes(a.id)) n += a.spawns.count;
     }
     return n;
   }
@@ -384,6 +389,10 @@ class GameState {
         this.s.wardrobe[c.slot] = a.cosmetic;
         this.emit('wardrobe', a.cosmetic);
       }
+    }
+    if (a.spawns) {
+      this.addSpawnsToInventory(a);
+      this.reconcileMachineInventory();
     }
     this.recompute();
     this.save();

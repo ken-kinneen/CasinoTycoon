@@ -244,94 +244,71 @@ export class Ledger {
     return wrap;
   }
 
-  _renderStarterChoice(body, afford, mode) {
+  _renderStarterChoice(body, afford) {
     const g = this.game;
     const cid = g.casinoDef.id;
+    const u = CASINO_UPGRADES[cid].find(u => u.id === 'd_roulette1');
+    if (!u) return;
 
-    const isBuyTable = mode === 'buy_table';
-    const targetId = isBuyTable ? 'd_roulette1' : 'd_slot1';
-    const starters = CASINO_UPGRADES[cid].filter(u => u.id === targetId);
-
-    $('ledger-heading').textContent = isBuyTable
-      ? 'Your First Table'
-      : 'Time for Passive Income';
-    $('ledger-intro').textContent = isBuyTable
-      ? 'You have $200. Buy a roulette table — deal against your customers yourself.'
-      : 'Buy a slot machine. It earns money while you do other things.';
-
+    $('ledger-heading').textContent = 'Your First Table';
+    $('ledger-intro').textContent = 'You have $200. Buy a roulette table — deal against your customers yourself.';
     $('ledger-tabs').style.display = 'none';
 
-    const STARTER_INFO = {
-      'd_slot1': {
-        playstyle: 'PASSIVE',
-        playstyleClass: 'starter-passive',
-        desc: 'Guests sit down, pull the lever, and feed the hopper. You collect the cash. No skill required — just warm bodies and bad odds.',
-        pros: ['Earns money while you do other things', 'No player interaction needed', 'Scales with more machines'],
-        cons: ['Lower earning potential per guest', 'You need traffic to make money'],
-      },
-      'd_roulette1': {
-        playstyle: 'HANDS-ON',
-        playstyleClass: 'starter-active',
-        desc: 'You deal against the customer yourself. Spin the wheel, work the margins. Higher risk, higher reward — if you\'ve got the nerve.',
-        pros: ['Higher payout per guest', 'You control the outcome', 'More engaging gameplay'],
-        cons: ['Requires your attention to deal', 'Guests need to be at the table'],
-      },
+    const info = {
+      playstyle: 'HANDS-ON',
+      playstyleClass: 'starter-active',
+      desc: 'You deal against the customer yourself. Spin the wheel, work the margins. Higher risk, higher reward — if you\'ve got the nerve.',
+      pros: ['Higher payout per guest', 'You control the outcome', 'More engaging gameplay'],
+      cons: ['Requires your attention to deal', 'Guests need to be at the table'],
     };
 
+    const canBuy = afford(u.cost);
     const wrap = document.createElement('div');
     wrap.className = 'starter-choice';
 
-    for (const u of starters) {
-      const info = STARTER_INFO[u.id] || { playstyle: '???', playstyleClass: '', desc: '', pros: [], cons: [] };
-      const canBuy = afford(u.cost);
+    const card = document.createElement('div');
+    card.className = 'starter-card ' + info.playstyleClass;
 
-      const card = document.createElement('div');
-      card.className = 'starter-card ' + info.playstyleClass;
+    const hero = document.createElement('div');
+    hero.className = 'starter-hero';
+    const badge = document.createElement('div');
+    badge.className = 'starter-badge ' + info.playstyleClass;
+    badge.textContent = info.playstyle;
+    const cvs = document.createElement('canvas');
+    cvs.className = 'starter-preview';
+    cvs.width = PREVIEW_PX;
+    cvs.height = PREVIEW_PX;
+    const key = resolveModelKey(u.model);
+    this._previews.push({ key, cvs, angle: Math.random() * Math.PI * 2 });
+    hero.appendChild(cvs);
+    hero.appendChild(badge);
+    card.appendChild(hero);
 
-      const hero = document.createElement('div');
-      hero.className = 'starter-hero';
-      const badge = document.createElement('div');
-      badge.className = 'starter-badge ' + info.playstyleClass;
-      badge.textContent = info.playstyle;
-      const cvs = document.createElement('canvas');
-      cvs.className = 'starter-preview';
-      cvs.width = PREVIEW_PX;
-      cvs.height = PREVIEW_PX;
-      const key = resolveModelKey(u.model);
-      this._previews.push({ key, cvs, angle: Math.random() * Math.PI * 2 });
-      hero.appendChild(cvs);
-      hero.appendChild(badge);
-      card.appendChild(hero);
+    const bd = document.createElement('div');
+    bd.className = 'starter-body';
+    bd.innerHTML =
+      `<div class="starter-name">${u.name}</div>` +
+      `<div class="starter-cost">${fmtMoney(u.cost)}</div>` +
+      `<div class="starter-blurb">${u.blurb}</div>` +
+      `<div class="starter-desc">${info.desc}</div>` +
+      `<div class="starter-traits">` +
+        info.pros.map(p => `<div class="starter-pro">${icon('check')} ${p}</div>`).join('') +
+        info.cons.map(c => `<div class="starter-con">${icon('close')} ${c}</div>`).join('') +
+      `</div>` +
+      `<button class="starter-buy${canBuy ? '' : ' disabled'}"${canBuy ? '' : ' disabled'}>${canBuy ? 'Buy This' : 'Too poor'}</button>`;
+    card.appendChild(bd);
 
-      const bd = document.createElement('div');
-      bd.className = 'starter-body';
-      bd.innerHTML =
-        `<div class="starter-name">${u.name}</div>` +
-        `<div class="starter-cost">${fmtMoney(u.cost)}</div>` +
-        `<div class="starter-blurb">${u.blurb}</div>` +
-        `<div class="starter-desc">${info.desc}</div>` +
-        `<div class="starter-traits">` +
-          info.pros.map(p => `<div class="starter-pro">${icon('check')} ${p}</div>`).join('') +
-          info.cons.map(c => `<div class="starter-con">${icon('close')} ${c}</div>`).join('') +
-        `</div>` +
-        `<button class="starter-buy${canBuy ? '' : ' disabled'}"${canBuy ? '' : ' disabled'}>${canBuy ? 'Buy This' : 'Too poor'}</button>`;
-      card.appendChild(bd);
-
-      if (canBuy) {
-        bd.querySelector('.starter-buy').onclick = () => {
-          if (g.buyCasinoUpgrade(u.id)) {
-            $('ledger-tabs').style.display = '';
-            quip(isBuyTable
-              ? 'A roulette table. Time to get my hands dirty.'
-              : 'A slot machine. One lever, infinite possibilities. Mostly bad ones.');
-            this.onChange && this.onChange(u);
-          }
-        };
-      }
-
-      wrap.appendChild(card);
+    if (canBuy) {
+      bd.querySelector('.starter-buy').onclick = () => {
+        if (g.buyCasinoUpgrade(u.id)) {
+          $('ledger-tabs').style.display = '';
+          quip('A roulette table. Time to get my hands dirty.');
+          this.onChange && this.onChange(u);
+        }
+      };
     }
 
+    wrap.appendChild(card);
     body.appendChild(wrap);
   }
 
@@ -345,13 +322,11 @@ export class Ledger {
 
     const afford = (cost) => g.godMode || g.s.money >= cost;
 
-    // During tutorial buy_table step: show roulette only. During buy_slot: show slot only.
+    // During tutorial buy_table step: show roulette only
     const tutStep = g.s.tutorialStep;
     const inTutorial = !g.s.tutorialComplete;
     if (this.tab === 'casino' && inTutorial && tutStep === 1) {
-      this._renderStarterChoice(body, afford, 'buy_table');
-    } else if (this.tab === 'casino' && inTutorial && tutStep === 7) {
-      this._renderStarterChoice(body, afford, 'buy_slot');
+      this._renderStarterChoice(body, afford);
     } else if (this.tab === 'casino') {
       const list = CASINO_UPGRADES[g.casinoDef.id];
       $('ledger-intro').textContent = TAB_META.casino.intro(g, list, list.filter(u => g.ownsCasinoUpgrade(u.id)).length);

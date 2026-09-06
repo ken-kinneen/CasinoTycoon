@@ -39,6 +39,15 @@ function cachedSphGeo(r, seg) {
   if (!geoCache.has(k)) { const g = new THREE.SphereGeometry(r, seg, seg); g._cached = true; geoCache.set(k, g); }
   return geoCache.get(k);
 }
+function cachedCapGeo(radius, length, capSeg, radialSeg) {
+  const k = `cap${radius},${length},${capSeg},${radialSeg}`;
+  if (!geoCache.has(k)) {
+    const g = new THREE.CapsuleGeometry(radius, length, capSeg, radialSeg);
+    g._cached = true;
+    geoCache.set(k, g);
+  }
+  return geoCache.get(k);
+}
 
 export function box(w, h, d, material, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(cachedBoxGeo(w, h, d), material);
@@ -55,6 +64,14 @@ export function cyl(rt, rb, h, material, x = 0, y = 0, z = 0, seg = 12) {
 export function sph(r, material, x = 0, y = 0, z = 0, seg = 10) {
   const m = new THREE.Mesh(cachedSphGeo(r, seg), material);
   m.position.set(x, y, z); m.castShadow = r > 0.5; return m;
+}
+/** Capsule along Y. `length` is the cylindrical midsection height (total height ≈ length + 2*radius). */
+export function capsule(radius, length, material, x = 0, y = 0, z = 0, { capSeg = 4, radialSeg = 8, sx = 1, sy = 1, sz = 1 } = {}) {
+  const m = new THREE.Mesh(cachedCapGeo(radius, length, capSeg, radialSeg), material);
+  m.position.set(x, y, z);
+  if (sx !== 1 || sy !== 1 || sz !== 1) m.scale.set(sx, sy, sz);
+  m.castShadow = radius > 0.08; m.receiveShadow = true;
+  return m;
 }
 export function torus(r, tube, material, x = 0, y = 0, z = 0, arc = Math.PI * 2) {
   const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 8, 24, arc), material);
@@ -758,6 +775,152 @@ export function makeBillboard(text = 'YOU WILL WIN*', sub = '*you will not win')
   // the owner's face, smug
   const face = plane(1.6, 1.6, new THREE.MeshBasicMaterial({ map: T.faceTexture('sneer', '#e0ac69') }), -3.4, 7.1, 0.17); g.add(face);
   for (const x of [-3, 0, 3]) { const l = new THREE.SpotLight(0xffffff, 10, 10, 0.7, 0.5, 1.2); l.position.set(x, 4.6, 1.6); l.target.position.set(x, 7, 0); g.add(l); g.add(l.target); }
+  return g;
+}
+
+/**
+ * Full 3D facade for The Lucky Duck — a proper model with wall depth,
+ * recessed window bays, real glass panes, protruding columns, physical
+ * trim, and a mounted "CASINO" sign box.
+ * Origin is at ground level, center of the front face.
+ * +Z faces outward (toward the street).
+ */
+export function makeDuckFacade(W, H) {
+  const g = new THREE.Group();
+  const DEPTH = 1.2;
+  const FH = H + 3.0;         // facade is taller than the interior ceiling
+
+  const tileMat = mat(0xd0c4a8, { roughness: 0.7 });
+  const maroon = mat(0x6b1e28, { roughness: 0.65 });
+  maroon.polygonOffset = true; maroon.polygonOffsetFactor = -2; maroon.polygonOffsetUnits = -2;
+  const teal = mat(0x4a8a8e, { roughness: 0.45, metalness: 0.15 });
+  teal.polygonOffset = true; teal.polygonOffsetFactor = -3; teal.polygonOffsetUnits = -3;
+  const frameMat = mat(0x2a2a2e, { roughness: 0.45, metalness: 0.2 });
+  const glassMat = mat(0x6aabb0, { roughness: 0.04, metalness: 0.4, transparent: true, opacity: 0.22, flatShading: false, side: THREE.DoubleSide });
+  glassMat.polygonOffset = true; glassMat.polygonOffsetFactor = -1; glassMat.polygonOffsetUnits = -1;
+  const dirtGlass = mat(0x4a8a8e, { roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.35, flatShading: false, side: THREE.DoubleSide });
+  dirtGlass.polygonOffset = true; dirtGlass.polygonOffsetFactor = -1; dirtGlass.polygonOffsetUnits = -1;
+  // trim pieces (sills, lintels) get offset to avoid Z-fighting with walls
+  const trimMat = tileMat.clone(); trimMat.polygonOffset = true; trimMat.polygonOffsetFactor = 1; trimMat.polygonOffsetUnits = 1;
+
+  const splitH = FH * 0.48;   // lower/upper boundary — gives plenty of upper room
+  const upperH = FH - splitH;
+  const doorW = 3.2;
+
+  // ====== LOWER STORY (cream tile) ======
+  const leftSolidW = (W - doorW) / 2;
+  // kick plate (solid wall below windows)
+  g.add(box(leftSolidW, 0.7, DEPTH, tileMat, -(doorW / 2 + leftSolidW / 2), 0.35, 0));
+  g.add(box(leftSolidW, 0.7, DEPTH, tileMat, (doorW / 2 + leftSolidW / 2), 0.35, 0));
+  // header above ground windows — stops below maroon band
+  g.add(box(leftSolidW, 0.3, DEPTH, tileMat, -(doorW / 2 + leftSolidW / 2), splitH - 0.22, 0));
+  g.add(box(leftSolidW, 0.3, DEPTH, tileMat, (doorW / 2 + leftSolidW / 2), splitH - 0.22, 0));
+  // above the door — stops below maroon band
+  const aboveDoorH = splitH - 3.3 - 0.08;
+  g.add(box(doorW + 0.4, aboveDoorH, DEPTH, tileMat, 0, 3.3 + aboveDoorH / 2, 0));
+
+  // columns between window bays
+  const numBaysPerSide = 2;
+  const bayTotalW = leftSolidW - 0.6;
+  const colW = 0.35, colDepth = 0.35;
+  const bayW = (bayTotalW - colW * (numBaysPerSide + 1)) / numBaysPerSide;
+  const winH = splitH - 1.4;
+  const winY = 0.75 + winH / 2;
+
+  for (const side of [-1, 1]) {
+    const sideOffset = side * (doorW / 2);
+    const startX = sideOffset + side * 0.3;
+
+    for (let i = 0; i <= numBaysPerSide; i++) {
+      const cx = startX + side * (colW / 2 + i * (bayW + colW));
+      const colH = splitH - 0.08;
+      g.add(box(colW, colH, DEPTH + colDepth, tileMat, cx, colH / 2, colDepth / 2));
+      g.add(box(colW + 0.08, 0.08, DEPTH + colDepth + 0.08, mat(0xb8ac90, { roughness: 0.5 }), cx, colH - 0.02, colDepth / 2));
+    }
+
+    for (let i = 0; i < numBaysPerSide; i++) {
+      const bx = startX + side * (colW + bayW / 2 + i * (bayW + colW));
+      // sill + lintel — nudged forward to avoid Z-fighting with kick/header walls
+      g.add(box(bayW, 0.06, DEPTH + 0.02, trimMat, bx, 0.75 - 0.03, 0.02));
+      g.add(box(bayW, 0.06, DEPTH + 0.02, trimMat, bx, 0.75 + winH + 0.03, 0.02));
+      // glass pane — NO dark backing, truly see-through
+      const isBroken = (side === 1 && i === 1) || (side === -1 && i === 0);
+      g.add(box(bayW - 0.08, winH - 0.08, 0.04, isBroken ? dirtGlass : glassMat, bx, winY, 0.1));
+      // mullion cross
+      g.add(box(0.04, winH - 0.12, 0.05, frameMat, bx, winY, 0.12));
+      g.add(box(bayW - 0.12, 0.04, 0.05, frameMat, bx, winY, 0.12));
+    }
+  }
+
+  // ====== UPPER STORY (maroon band) ======
+  // solid strips below and above the upper windows — raised slightly above cream header
+  g.add(box(W + 0.4, 0.5, DEPTH, maroon, 0, splitH + 0.32, 0));
+  g.add(box(W + 0.4, 0.5, DEPTH, maroon, 0, FH - 0.28, 0));
+
+  const numUpperBays = 4;
+  const upperBayW = (W - 1.6) / numUpperBays;
+  const upperWinH = upperH - 1.6;
+  const upperWinY = splitH + 0.65 + upperWinH / 2;
+
+  // pier walls between upper bays — slightly recessed to avoid coplanar fighting with strips
+  for (let i = 0; i <= numUpperBays; i++) {
+    const px = -W / 2 + 0.6 + i * upperBayW;
+    g.add(box(0.3, upperH, DEPTH - 0.04, maroon, px, splitH + upperH / 2, -0.02));
+  }
+
+  for (let i = 0; i < numUpperBays; i++) {
+    const bx = -W / 2 + 0.6 + upperBayW / 2 + i * upperBayW;
+    const bw = upperBayW - 0.5;
+
+    // window frame — nudged past the wall face to avoid Z-fighting
+    g.add(box(bw + 0.12, upperWinH + 0.12, 0.08, frameMat, bx, upperWinY, DEPTH / 2 + 0.06));
+
+    // glass — no dark backing, see-through into the interior
+    const isSmashed = i >= 2;
+    if (isSmashed) {
+      const smashedMat = mat(0x5a9a9e, { roughness: 0.08, metalness: 0.25, transparent: true, opacity: 0.28, flatShading: false, side: THREE.DoubleSide });
+      smashedMat.polygonOffset = true; smashedMat.polygonOffsetFactor = -1; smashedMat.polygonOffsetUnits = -1;
+      g.add(box(bw - 0.06, upperWinH - 0.06, 0.03, smashedMat, bx, upperWinY, 0.15));
+      // holes where glass is missing — just open (no dark plane)
+      // shards still in the frame as small glass triangles
+      for (let s = 0; s < 3 + i; s++) {
+        const sx = bx + (Math.sin(s * 3.7 + i) * 0.4) * (bw * 0.35);
+        const sy = upperWinY + upperWinH * 0.35 - s * 0.25;
+        g.add(box(0.15 + s * 0.05, 0.08, 0.03, frameMat, sx, sy, 0.16));
+      }
+    } else {
+      g.add(box(bw - 0.06, upperWinH - 0.06, 0.03, glassMat, bx, upperWinY, 0.15));
+    }
+
+    // mullions
+    for (let m = 1; m <= 2; m++) {
+      const mx = bx - bw / 2 + m * bw / 3;
+      g.add(box(0.05, upperWinH - 0.1, 0.06, frameMat, mx, upperWinY, DEPTH / 2 + 0.07));
+    }
+    g.add(box(bw - 0.1, 0.05, 0.06, frameMat, bx, upperWinY, DEPTH / 2 + 0.07));
+  }
+
+  // ====== TRIM & DETAILS ======
+  g.add(box(W + 0.6, 0.15, 0.25, teal, 0, splitH + 0.08, DEPTH / 2 + 0.13));
+  g.add(box(W + 0.6, 0.12, 0.2, teal, 0, FH + 0.08, DEPTH / 2 + 0.1));
+
+  // "CASINO" sign — 3D box mounted on the upper maroon wall
+  const signBoxW = W * 0.55;
+  const signBoxH = 1.6;
+  const signBoxD = 0.35;
+  const signY = splitH + upperH / 2 + 0.1;
+  g.add(box(signBoxW, signBoxH, signBoxD, mat(0x1a1a1e, { roughness: 0.3 }), 0, signY, DEPTH / 2 + signBoxD / 2 + 0.05));
+  const casinoText = textPlane('CASINO', { w: signBoxW - 0.2, h: signBoxH - 0.2, color: '#e8e0d0', font: 'bold 200px Impact, Arial Black, sans-serif', glowColor: '#ffe8c0', emissive: true });
+  casinoText.position.set(0, signY, DEPTH / 2 + signBoxD + 0.07);
+  g.add(casinoText);
+  const signLight = new THREE.PointLight(0xffe8c0, 3, 8, 2);
+  signLight.position.set(0, signY + 1.2, DEPTH / 2 + signBoxD + 0.5);
+  g.add(signLight);
+
+  // side returns
+  g.add(box(0.12, FH + 0.3, DEPTH + 0.3, tileMat, -W / 2 - 0.06, FH / 2 + 0.15, 0));
+  g.add(box(0.12, FH + 0.3, DEPTH + 0.3, tileMat, W / 2 + 0.06, FH / 2 + 0.15, 0));
+
   return g;
 }
 

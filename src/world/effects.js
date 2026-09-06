@@ -42,14 +42,7 @@ export class Effects {
       s.userData = { vx: (Math.random() - 0.5) * 0.15, vz: (Math.random() - 0.5) * 0.15, t: Math.random() * 10 };
       this.root.add(s); this.haze.push(s);
     }
-    // ---- cigarette smoke wisps rising from the machine rows ----------------------------
-    this.smokeSources = world.machines.map(m => m.usePos);
-    const smokeMap = softSpriteTexture('200,200,220');
-    for (let i = 0; i < 24; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeMap, transparent: true, opacity: 0.18, depthWrite: false }));
-      this.resetSmoke(s, true);
-      this.root.add(s); this.smoke.push(s);
-    }
+    this.smokeSources = [];
     // ---- streetlamp light cones ------------------------------------------------------
     for (const x of world.lampXs || []) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(2.6, 5.2, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.045, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));

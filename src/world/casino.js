@@ -21,7 +21,7 @@ function _disposeHierarchy(obj) {
 }
 
 const PALETTE = {
-  duck:   { carpet: ['#3a0b1e', '#c99a2e', '#7a2a5a'], wall: ['#3b2418', '#b8862a'], felt: '#0f5a3a', facade: 'brick', neighbours: ['pawn', 'bail'], ceiling: 0x120a10, warm: 0xffb060 },
+  duck:   { carpet: ['#8a6848', '#a88860', '#6e5438'], wall: ['#3b2418', '#b8862a'], felt: '#0f5a3a', facade: 'tile', neighbours: ['pawn', 'bail'], ceiling: 0x1e1610, warm: 0xffb060 },
   rat:    { carpet: ['#0e1428', '#b89840', '#1a2040'], wall: ['#161c2e', '#8a7a50'], felt: '#0e3a5a', facade: 'stone', neighbours: ['LIQUOR', 'TATTOO'], ceiling: 0x10141e, warm: 0xffc878 },
   diablo: { carpet: ['#f0e8d8', '#d4af37', '#c8bca8'], wall: ['#e8e0d0', '#d4af37'], felt: '#0a4a7a', facade: 'marble', neighbours: [], ceiling: 0xf0ece0, warm: 0xfff0d0 },
 };
@@ -45,10 +45,11 @@ export class CasinoWorld {
     this.machines = []; this.tables = []; this.props = []; this.colliders = []; this.zones = {}; this.animated = []; this.lampXs = []; this.neonSigns = [];
   }
 
-  addCollider(x, z, w, d, dynamic = false) { this.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, dynamic }); }
+  addCollider(x, z, w, d, dynamic = false, wall = false, label = '') { this.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, dynamic, wall, label }); }
 
   rebuildColliders() {
     this.colliders = this.colliders.filter(c => !c.dynamic);
+    for (const a of this.animated) { if (a.collider) a.collider = null; }
     for (const t of this.tables) {
       this.addCollider(t.group.position.x, t.group.position.z, 3.4, 2.6, true);
     }
@@ -156,32 +157,52 @@ export class CasinoWorld {
     }
     // street lamps + light cones
     this.lampXs = [-W / 2 - 4, -W / 6, W / 6, W / 2 + 4];
-    for (const x of this.lampXs) { const l = M.makeStreetLamp(); l.position.set(x, 0, D / 2 + 5.5); add(l); this.animated.push({ type: 'lamp', obj: l.userData.light, t: Math.random() * 10, base: 60 }); }
+    for (const x of this.lampXs) { const l = M.makeStreetLamp(); l.position.set(x, 0, D / 2 + 5.5); add(l); this.animated.push({ type: 'lamp', obj: l.userData.light, t: Math.random() * 10, base: 60 }); this.addCollider(x, D / 2 + 5.5, 0.4, 0.4); }
     // parked cars, hydrant, dumpster, trash
     const carCols = [0x8b0000, 0x1a2a4a, 0x2a2a2a, 0xd0d0d0, 0x6b3a8a];
-    for (let i = 0; i < 3; i++) { const c = M.makeCar(carCols[(i * 2 + def.width) % carCols.length]); c.position.set(-W / 2 - 10 + i * 6.5 + (i > 0 ? W + 3 : 0), 0, D / 2 + 8.2); c.rotation.y = Math.PI * (i % 2); add(c); }
-    const moving = M.makeCar(0xf1c40f); moving.position.set(-60, 0, D / 2 + 13.5); add(moving); this.animated.push({ type: 'car', obj: moving, t: Math.random() * 20, z: D / 2 + 13.5, range: W + 120 });
+    if (tier === 0) {
+      // duck: a couple of cars parked off to the sides, clear of the entrance
+      const c1 = M.makeCar(carCols[1]); c1.position.set(-W / 2 - 3, 0, D / 2 + 9); c1.rotation.y = Math.PI * 0.9; add(c1);
+      const c2 = M.makeCar(carCols[3]); c2.position.set(W / 2 + 4, 0, D / 2 + 8.5); c2.rotation.y = Math.PI * 0.05; add(c2);
+    } else {
+      for (let i = 0; i < 3; i++) { const c = M.makeCar(carCols[(i * 2 + def.width) % carCols.length]); const cx = -W / 2 - 10 + i * 6.5 + (i > 0 ? W + 3 : 0), cz = D / 2 + 8.2; c.position.set(cx, 0, cz); c.rotation.y = Math.PI * (i % 2); add(c); this.addCollider(cx, cz, 4.4, 2.2); }
+    }
+    const moving = M.makeCar(0xf1c40f); moving.position.set(-60, 0, D / 2 + 13.5); add(moving); this.animated.push({ type: 'car', obj: moving, t: Math.random() * 20, z: D / 2 + 13.5, range: W + 120, collider: null });
     const hyd = M.makeHydrant(); hyd.position.set(W / 2 + 1.5, 0.08, D / 2 + 5.4); add(hyd);
+    this.addCollider(W / 2 + 1.5, D / 2 + 5.4, 0.5, 0.5);
     const dump = M.makeDumpster(); dump.position.set(-W / 2 - 2.6, 0, D / 2 - 3); dump.rotation.y = Math.PI / 2; add(dump);
+    this.addCollider(-W / 2 - 2.6, D / 2 - 3, 1.2, 2.2);
     for (let i = 0; i < 8; i++) add(M.box(0.25, 0.04, 0.35, M.mat([0xdddddd, 0xc0392b, 0x8b6b3a][i % 3]), -W / 2 - 3 + Math.random() * (W + 6), 0.09, D / 2 + 0.6 + Math.random() * 5.2).rotateY(Math.random() * 3));
     // neighbouring shops
     if (P.neighbours.length) {
       const n1 = M.makeNeighbourShop(P.neighbours[0], 10, H + 0.6); n1.position.set(-W / 2 - 5.2, 0, D / 2); add(n1); this.animated.push({ type: 'neon', obj: n1.userData.sign, t: 2, flick: 0.5 });
+      this.addCollider(-W / 2 - 5.2, D / 2 - 3, 10, 6);
       const n2 = M.makeNeighbourShop(P.neighbours[1], 10, H + 1.4); n2.position.set(W / 2 + 5.2, 0, D / 2); add(n2); this.animated.push({ type: 'neon', obj: n2.userData.sign, t: 5, flick: 0.2 });
+      this.addCollider(W / 2 + 5.2, D / 2 - 3, 10, 6);
     }
 
     // =====================================================================
     // BUILDING SHELL
     // =====================================================================
-    const carpetTex = T.carpetTexture(P.carpet[0], P.carpet[1], P.carpet[2], def.id.length, [W / 2.2, D / 2.2]);
-    const floor = M.box(W, 0.12, D, has('carpet') ? M.texMat(T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]), { roughness: 0.9 }) : M.texMat(carpetTex, { roughness: 0.9 }), 0, 0.06, 0);
+    let floorMat;
+    if (tier === 0) {
+      // duck: single plain carpet covering the whole floor, no marble walkway
+      const plainTex = has('carpet') ? T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]) : T.plainCarpetTexture(P.carpet[0], P.carpet[1], P.carpet[2], [W / 3, D / 3]);
+      floorMat = M.texMat(plainTex, { roughness: 0.95 });
+    } else {
+      const carpetTex = has('carpet') ? T.carpetTexture('#3a0630', '#ffd700', '#ff2e88', 7, [W / 1.6, D / 1.6]) : T.carpetTexture(P.carpet[0], P.carpet[1], P.carpet[2], def.id.length, [W / 2.2, D / 2.2]);
+      floorMat = M.texMat(carpetTex, { roughness: 0.9 });
+    }
+    const floor = M.box(W, 0.12, D, floorMat, 0, 0.06, 0);
     floor.receiveShadow = true; add(floor);
-    // marble walkway from the door to the tables + a runner outside
-    const marbleW = def.id === 'duck' ? 3.4 : 4.2;
-    const marble = M.texMat(T.marbleTexture(def.id === 'duck' ? '#a09888' : '#c8c0b4', def.id === 'duck' ? '#787068' : '#a8a098', [1, 2]), { roughness: def.id === 'duck' ? 0.6 : 0.3, metalness: def.id === 'duck' ? 0.02 : 0.06, envMapIntensity: 0.1 });
-    const walkLen = def.id === 'duck' ? 6 : D - 2;
-    add(M.box(marbleW, 0.13, walkLen, marble, 0, 0.065, D / 2 - walkLen / 2));
-    add(M.box(marbleW + 0.2, 0.02, walkLen + 0.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.5, flatShading: false }), 0, 0.125, D / 2 - walkLen / 2).translateY(-0.01));
+    if (tier > 0) {
+      // marble walkway (rat + diablo only)
+      const marbleW = tier === 2 ? 4.2 : 4.2;
+      const marble = M.texMat(T.marbleTexture(tier === 2 ? '#c8c0b4' : '#c8c0b4', tier === 2 ? '#a8a098' : '#a8a098', [1, 2]), { roughness: 0.3, metalness: 0.06, envMapIntensity: 0.1 });
+      const walkLen = D - 2;
+      add(M.box(marbleW, 0.13, walkLen, marble, 0, 0.065, D / 2 - walkLen / 2));
+      add(M.box(marbleW + 0.2, 0.02, walkLen + 0.2, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.5, flatShading: false }), 0, 0.125, D / 2 - walkLen / 2).translateY(-0.01));
+    }
     add(M.box(3, 0.05, 6, M.mat(0x8b0000, { roughness: 0.9 }), 0, 0.17, D / 2 + 3.2)); // red carpet outside
     // walls
     const wallMat = M.texMat(T.wallTexture(P.wall[0], P.wall[1], [W / 4, 1]), { roughness: 0.85 });
@@ -190,21 +211,54 @@ export class CasinoWorld {
     add(M.box(0.4, H, D, wallMatSide, -W / 2, H / 2, 0));
     add(M.box(0.4, H, D, wallMatSide, W / 2, H / 2, 0));
     const doorW = 3.2;
-    add(M.box((W - doorW) / 2, H, 0.4, wallMat, -(W / 4 + doorW / 4), H / 2, D / 2));
-    add(M.box((W - doorW) / 2, H, 0.4, wallMat, (W / 4 + doorW / 4), H / 2, D / 2));
-    add(M.box(doorW + 0.4, H - 3.3, 0.4, wallMat, 0, H - (H - 3.3) / 2, D / 2));
-    this.addCollider(0, -D / 2, W, 0.4); this.addCollider(-W / 2, 0, 0.4, D); this.addCollider(W / 2, 0, 0.4, D);
-    this.addCollider(-(W / 4 + doorW / 4), D / 2, (W - doorW) / 2, 0.4); this.addCollider((W / 4 + doorW / 4), D / 2, (W - doorW) / 2, 0.4);
-    // exterior cladding on the front (brick / stone / marble)
+    if (tier === 0) {
+      // duck: front wall with openings so the facade windows are see-through.
+      // Thin strips (kick plate + header) pulled inward to avoid Z-fighting
+      // with the exterior facade model that sits at D/2 + 0.2.
+      const sideW = (W - doorW) / 2;
+      const kickH = 0.75;
+      const headerH = 0.4;
+      const fwZ = D / 2 - 0.15;   // pulled inward from the facade
+
+      for (const sx of [-1, 1]) {
+        const cx = sx * (doorW / 2 + sideW / 2);
+        add(M.box(sideW, kickH, 0.1, wallMat, cx, kickH / 2, fwZ));
+        add(M.box(sideW, headerH, 0.1, wallMat, cx, H - headerH / 2, fwZ));
+      }
+      add(M.box(doorW + 0.4, H - 3.3, 0.1, wallMat, 0, H - (H - 3.3) / 2, fwZ));
+    } else {
+      add(M.box((W - doorW) / 2, H, 0.4, wallMat, -(W / 4 + doorW / 4), H / 2, D / 2));
+      add(M.box((W - doorW) / 2, H, 0.4, wallMat, (W / 4 + doorW / 4), H / 2, D / 2));
+      add(M.box(doorW + 0.4, H - 3.3, 0.4, wallMat, 0, H - (H - 3.3) / 2, D / 2));
+    }
+    this.addCollider(0, -D / 2, W, 0.4, false, true); this.addCollider(-W / 2, 0, 0.4, D, false, true); this.addCollider(W / 2, 0, 0.4, D, false, true);
+    this.addCollider(-(W / 4 + doorW / 4), D / 2, (W - doorW) / 2, 0.4, false, true); this.addCollider((W / 4 + doorW / 4), D / 2, (W - doorW) / 2, 0.4, false, true);
+    // exterior cladding on the front (brick / stone / marble — duck uses its own 3D facade)
     const cladTex = P.facade === 'brick' ? T.brickTexture() : P.facade === 'stone' ? T.brickTexture('#2a2a34', '#15151c') : null;
     const clad = cladTex ? M.texMat(cladTex, { roughness: 0.9 }) : M.mat(0x2a0c14, { roughness: 0.3, metalness: 0.1, flatShading: false });
-    add(M.box((W - doorW) / 2 - 0.2, H + 0.6, 0.12, clad, -(W / 4 + doorW / 4) - 0.1, (H + 0.6) / 2, D / 2 + 0.26));
-    add(M.box((W - doorW) / 2 - 0.2, H + 0.6, 0.12, clad, (W / 4 + doorW / 4) + 0.1, (H + 0.6) / 2, D / 2 + 0.26));
-    add(M.box(W + 0.6, H + 0.8, 0.12, clad, 0, (H + 0.8) / 2, -D / 2 - 0.26)); // back
-    add(M.box(0.12, H + 0.8, D + 0.6, clad, -W / 2 - 0.26, (H + 0.8) / 2, 0)); add(M.box(0.12, H + 0.8, D + 0.6, clad, W / 2 + 0.26, (H + 0.8) / 2, 0));
+
+    if (tier === 0) {
+      // duck: full 3D facade model — cream tile, maroon upper, recessed
+      // window bays with real glass, protruding columns, sign box
+      const facade = M.makeDuckFacade(W, H);
+      facade.position.set(0, 0, D / 2 + 0.2);
+      add(facade);
+      // side + back cladding
+      const tileClad = M.mat(0xd0c4a8, { roughness: 0.7 });
+      add(M.box(W + 0.6, H + 0.8, 0.3, tileClad, 0, (H + 0.8) / 2, -D / 2 - 0.35));
+      add(M.box(0.3, H + 0.8, D + 0.6, tileClad, -W / 2 - 0.35, (H + 0.8) / 2, 0));
+      add(M.box(0.3, H + 0.8, D + 0.6, tileClad, W / 2 + 0.35, (H + 0.8) / 2, 0));
+    } else {
+      // RAT & DIABLO — original cladding
+      add(M.box((W - doorW) / 2 - 0.2, H + 0.6, 0.12, clad, -(W / 4 + doorW / 4) - 0.1, (H + 0.6) / 2, D / 2 + 0.26));
+      add(M.box((W - doorW) / 2 - 0.2, H + 0.6, 0.12, clad, (W / 4 + doorW / 4) + 0.1, (H + 0.6) / 2, D / 2 + 0.26));
+      add(M.box(W + 0.6, H + 0.8, 0.12, clad, 0, (H + 0.8) / 2, -D / 2 - 0.26));
+      add(M.box(0.12, H + 0.8, D + 0.6, clad, -W / 2 - 0.26, (H + 0.8) / 2, 0)); add(M.box(0.12, H + 0.8, D + 0.6, clad, W / 2 + 0.26, (H + 0.8) / 2, 0));
+    }
     // roof + parapet + rooftop clutter
     add(M.box(W + 0.6, 0.3, D + 0.6, M.mat(0x1a1a20, { roughness: 0.95 }), 0, H + 0.15, 0));
-    add(M.box(W + 0.7, 0.5, 0.3, M.GOLD(), 0, H + 0.55, D / 2 + 0.2));
+    const facadeTop = tier === 0 ? H + 3.0 : H;
+    add(M.box(W + 0.7, 0.5, 0.3, tier === 0 ? M.mat(0x888890, { roughness: 0.6 }) : M.GOLD(), 0, facadeTop + 0.55, D / 2 + 0.2));
     for (let i = 0; i < 3; i++) add(M.box(1.2, 0.8, 1.2, M.mat(0x555560, { metalness: 0.5 }), -W / 3 + i * W / 3, H + 0.7, -D / 4));
     // ceiling
     const ceilMat = has('sky') ? M.glow(0x9ad0ff, 0.45) : M.mat(P.ceiling, { roughness: 0.9 });
@@ -219,27 +273,49 @@ export class CasinoWorld {
     const dl = M.makeDoubleDoor(doorW, 3.2); dl.position.set(0, 0.12, D / 2); add(dl);
     dl.children[0].rotation.y = -Math.PI / 2 + 0.2; dl.children[0].position.set(-doorW / 2 + 0.05, 0, doorW / 4 + 0.2);
     dl.children[1].rotation.y = Math.PI / 2 - 0.2; dl.children[1].position.set(doorW / 2 - 0.05, 0, doorW / 4 + 0.2);
-    add(M.box(doorW + 1.2, 0.25, 2.2, M.mat(0x8b0000, { roughness: 0.6 }), 0, 3.45, D / 2 + 1.1));
-    add(M.box(doorW + 1.3, 0.06, 2.3, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.45, flatShading: false }), 0, 3.6, D / 2 + 1.1));
+    if (tier === 0) {
+      // duck: teal-trimmed overhang projecting from the facade
+      add(M.box(doorW + 2.0, 0.18, 2.4, M.mat(0x4a8a8e, { roughness: 0.5, metalness: 0.15 }), 0, 3.45, D / 2 + 1.8));
+      add(M.box(doorW + 2.1, 0.04, 2.5, M.mat(0x3a7a7e, { roughness: 0.4, metalness: 0.2 }), 0, 3.58, D / 2 + 1.8));
+    } else {
+      add(M.box(doorW + 1.2, 0.25, 2.2, M.mat(0x8b0000, { roughness: 0.6 }), 0, 3.45, D / 2 + 1.1));
+      add(M.box(doorW + 1.3, 0.06, 2.3, M.mat(0xc8a020, { metalness: 0.5, roughness: 0.45, flatShading: false }), 0, 3.6, D / 2 + 1.1));
+    }
     const awningBulbs = new THREE.Mesh(new THREE.PlaneGeometry(doorW + 1.2, 0.14), new THREE.MeshBasicMaterial({ map: T.bulbStripTexture(), transparent: true, toneMapped: true }));
-    awningBulbs.position.set(0, 3.36, D / 2 + 2.21); add(awningBulbs);
-    const doorLight = new THREE.PointLight(0xffd080, 5, 10, 1.8); doorLight.position.set(0, 3.2, D / 2 + 1.2); add(doorLight);
+    awningBulbs.position.set(0, 3.36, D / 2 + (tier === 0 ? 3.0 : 2.21)); add(awningBulbs);
+    const doorLight = new THREE.PointLight(0xffd080, 5, 10, 1.8); doorLight.position.set(0, 3.2, D / 2 + (tier === 0 ? 2.0 : 1.2)); add(doorLight);
     { let ropeN = 1;
       for (const x of [-doorW / 2 - 0.6, doorW / 2 + 0.6]) { const r = M.makeVelvetRope(2.6); r.rotation.y = Math.PI / 2; r.position.y = 0.16; this.addProp(r, `Velvet Rope ${ropeN++}`, x, D / 2 + 3.2, 0.2, 1.4); }
     }
-    // windows: boarded or glowing
-    for (const x of [-W / 4 - 1, W / 4 + 1]) {
-      add(M.box(2.4, 2.0, 0.2, M.mat(0x2a1608), x, 2.3, D / 2 + 0.28));
-      if (has('windows')) { for (let i = 0; i < 4; i++) add(M.box(2.5, 0.32, 0.08, M.mat(0x6b5030, { roughness: 1 }), x, 1.6 + i * 0.5, D / 2 + 0.42).rotateZ((i % 2 ? 1 : -1) * 0.12)); }
-      else { add(M.box(2.1, 1.7, 0.06, M.glow(0x3a4a7a, 0.7, { transparent: true, opacity: 0.85 }), x, 2.3, D / 2 + 0.4)); add(M.textPlane('OPEN 24 HRS', { w: 1.8, h: 0.35, color: '#ff4466', glowColor: '#ff4466', emissive: true }).translateX(x).translateY(2.3).translateZ(D / 2 + 0.44)); }
+    // windows: boarded or glowing (rat + diablo only; duck has facade windows built above)
+    if (tier > 0) {
+      for (const x of [-W / 4 - 1, W / 4 + 1]) {
+        add(M.box(2.4, 2.0, 0.2, M.mat(0x2a1608), x, 2.3, D / 2 + 0.28));
+        if (has('windows')) { for (let i = 0; i < 4; i++) add(M.box(2.5, 0.32, 0.08, M.mat(0x6b5030, { roughness: 1 }), x, 1.6 + i * 0.5, D / 2 + 0.42).rotateZ((i % 2 ? 1 : -1) * 0.12)); }
+        else { add(M.box(2.1, 1.7, 0.06, M.glow(0x3a4a7a, 0.7, { transparent: true, opacity: 0.85 }), x, 2.3, D / 2 + 0.4)); add(M.textPlane('OPEN 24 HRS', { w: 1.8, h: 0.35, color: '#ff4466', glowColor: '#ff4466', emissive: true }).translateX(x).translateY(2.3).translateZ(D / 2 + 0.44)); }
+      }
     }
     // facade neon + marquee bulbs + blade sign
     const signW = Math.min(W - 2, 18);
     const displayName = game.casinoDisplayName();
-    const sign = M.makeNeonSign(displayName.toUpperCase().replace(', LAS VEGAS', ''), '#' + def.signColor.toString(16).padStart(6, '0'), signW, { intensity: 30 });
-    sign.position.set(0, H + 2.2, D / 2 + 0.35); add(sign);
-    this.animated.push({ type: 'neon', obj: sign, t: Math.random() * 10, flick: (def.id === 'duck' && !has('neon')) ? 0.9 : 0.12 });
-    add(M.box(signW + 1, signW * 0.26 + 0.8, 0.2, M.mat(0x0a0a0e, { roughness: 0.4 }), 0, H + 2.2, D / 2 + 0.2));
+    const signColor = '#' + def.signColor.toString(16).padStart(6, '0');
+    if (tier === 0) {
+      // duck: rooftop neon sign on steel posts above the taller facade
+      const duckFacadeH = H + 3.0;
+      const roofSignW = Math.min(W + 2, 14);
+      const sign = M.makeNeonSign(displayName.toUpperCase(), signColor, roofSignW, { intensity: 25 });
+      sign.position.set(0, duckFacadeH + 2.2, D / 2 + 0.8); add(sign);
+      this.animated.push({ type: 'neon', obj: sign, t: Math.random() * 10, flick: has('neon') ? 0.12 : 0.9 });
+      add(M.box(roofSignW + 0.8, roofSignW * 0.26 + 0.6, 0.2, M.mat(0x0a0a0e, { roughness: 0.4 }), 0, duckFacadeH + 2.2, D / 2 + 0.65));
+      for (const sx of [-roofSignW / 3, roofSignW / 3]) {
+        add(M.box(0.15, 2.4, 0.15, M.mat(0x444448, { metalness: 0.5, roughness: 0.4 }), sx, duckFacadeH + 0.6, D / 2 + 0.65));
+      }
+    } else {
+      const sign = M.makeNeonSign(displayName.toUpperCase().replace(', LAS VEGAS', ''), signColor, signW, { intensity: 30 });
+      sign.position.set(0, H + 2.2, D / 2 + 0.35); add(sign);
+      this.animated.push({ type: 'neon', obj: sign, t: Math.random() * 10, flick: 0.12 });
+      add(M.box(signW + 1, signW * 0.26 + 0.8, 0.2, M.mat(0x0a0a0e, { roughness: 0.4 }), 0, H + 2.2, D / 2 + 0.2));
+    }
     const bulbFrame = new THREE.Mesh(new THREE.PlaneGeometry(signW + 1, 0.16), new THREE.MeshBasicMaterial({ map: T.bulbStripTexture(), transparent: true, toneMapped: false }));
     bulbFrame.position.set(0, H + 2.2 + signW * 0.13 + 0.3, D / 2 + 0.31); add(bulbFrame); add(bulbFrame.clone().translateY(-(signW * 0.26 + 0.6)));
     if (has('namelights')) { const nlName = game.s.playerName ? game.s.playerName.toUpperCase() : 'VICTOR VANE'; const nl = M.makeNeonSign(`★ ${nlName} PRESENTS ★`, '#ff44aa', Math.min(W - 2, 14), { intensity: 20 }); nl.position.set(0, H + 2.2 + signW * 0.13 + 1.2, D / 2 + 0.35); add(nl); this.animated.push({ type: 'neon', obj: nl, t: 3, flick: 0.1 }); }
@@ -379,12 +455,12 @@ export class CasinoWorld {
       const wallFrontR = (W / 2 - divX2 + doorGap / 2) / 2;
       // left section
       add(M.box(divX1 - (-W / 2) - doorGap / 2 - 0.5, H, 0.3, roomWallMat, (-W / 2 + divX1 - doorGap / 2) / 2, H / 2, divZ1));
-      this.addCollider((-W / 2 + divX1 - doorGap / 2) / 2, divZ1, divX1 - (-W / 2) - doorGap / 2 - 0.5, 0.3);
+      this.addCollider((-W / 2 + divX1 - doorGap / 2) / 2, divZ1, divX1 - (-W / 2) - doorGap / 2 - 0.5, 0.3, false, false, 'Interior wall');
       // center-left section
       add(M.box((divX1 + doorGap / 2) - (-doorGap / 2) - doorGap, H, 0.3, roomWallMat, (divX1 - doorGap / 2 + (-doorGap / 2)) / 2, H / 2, divZ1));
       // right section
       add(M.box(W / 2 - divX2 - doorGap / 2 - 0.5, H, 0.3, roomWallMat, (W / 2 + divX2 + doorGap / 2) / 2, H / 2, divZ1));
-      this.addCollider((W / 2 + divX2 + doorGap / 2) / 2, divZ1, W / 2 - divX2 - doorGap / 2 - 0.5, 0.3);
+      this.addCollider((W / 2 + divX2 + doorGap / 2) / 2, divZ1, W / 2 - divX2 - doorGap / 2 - 0.5, 0.3, false, false, 'Interior wall');
       // center-right section
       add(M.box((doorGap / 2) - (-divX2 + doorGap / 2) + doorGap, H, 0.3, roomWallMat, (doorGap / 2 + divX2 - doorGap / 2) / 2, H / 2, divZ1));
       // gold trim on top
@@ -396,10 +472,10 @@ export class CasinoWorld {
       // WALL: gaming hall ↔ back wing (horizontal, with central doorway)
       const backWallLeftLen = (officeX - (-W / 2)) - doorGap / 2;
       add(M.box(backWallLeftLen, H, 0.3, roomWallMat, -W / 2 + backWallLeftLen / 2, H / 2, divZ2));
-      this.addCollider(-W / 2 + backWallLeftLen / 2, divZ2, backWallLeftLen, 0.3);
+      this.addCollider(-W / 2 + backWallLeftLen / 2, divZ2, backWallLeftLen, 0.3, false, false, 'Interior wall');
       const backWallRightLen = W / 2 - (doorGap / 2);
       add(M.box(backWallRightLen - 0.5, H, 0.3, roomWallMat, doorGap / 2 + (backWallRightLen - 0.5) / 2, H / 2, divZ2));
-      this.addCollider(doorGap / 2 + (backWallRightLen - 0.5) / 2, divZ2, backWallRightLen - 0.5, 0.3);
+      this.addCollider(doorGap / 2 + (backWallRightLen - 0.5) / 2, divZ2, backWallRightLen - 0.5, 0.3, false, false, 'Interior wall');
       add(M.box(W - 1, 0.06, 0.06, gold, 0, H - 0.04, divZ2));
       const backArch = M.makeArch(doorGap, H - 0.3);
       backArch.position.set(0, 0.12, divZ2); add(backArch);
@@ -408,18 +484,18 @@ export class CasinoWorld {
       const leftWallFrontLen = divZ1 - doorGap / 2 - 0;
       const leftWallBackLen = 0 - (divZ2 + doorGap / 2);
       add(M.box(0.3, H, leftWallFrontLen, roomWallMat, divX1, H / 2, divZ1 - leftWallFrontLen / 2));
-      this.addCollider(divX1, divZ1 - leftWallFrontLen / 2, 0.3, leftWallFrontLen);
+      this.addCollider(divX1, divZ1 - leftWallFrontLen / 2, 0.3, leftWallFrontLen, false, false, 'Interior wall');
       add(M.box(0.3, H, leftWallBackLen, roomWallMat, divX1, H / 2, divZ2 + doorGap / 2 + leftWallBackLen / 2));
-      this.addCollider(divX1, divZ2 + doorGap / 2 + leftWallBackLen / 2, 0.3, leftWallBackLen);
+      this.addCollider(divX1, divZ2 + doorGap / 2 + leftWallBackLen / 2, 0.3, leftWallBackLen, false, false, 'Interior wall');
       add(M.box(0.06, 0.06, divZ1 - divZ2, gold, divX1, H - 0.04, (divZ1 + divZ2) / 2));
       const leftArch = M.makeArch(doorGap, H - 0.3);
       leftArch.position.set(divX1, 0.12, 0); leftArch.rotation.y = Math.PI / 2; add(leftArch);
 
       // WALL: right wing (vertical, with doorway)
       add(M.box(0.3, H, leftWallFrontLen, roomWallMat, divX2, H / 2, divZ1 - leftWallFrontLen / 2));
-      this.addCollider(divX2, divZ1 - leftWallFrontLen / 2, 0.3, leftWallFrontLen);
+      this.addCollider(divX2, divZ1 - leftWallFrontLen / 2, 0.3, leftWallFrontLen, false, false, 'Interior wall');
       add(M.box(0.3, H, leftWallBackLen, roomWallMat, divX2, H / 2, divZ2 + doorGap / 2 + leftWallBackLen / 2));
-      this.addCollider(divX2, divZ2 + doorGap / 2 + leftWallBackLen / 2, 0.3, leftWallBackLen);
+      this.addCollider(divX2, divZ2 + doorGap / 2 + leftWallBackLen / 2, 0.3, leftWallBackLen, false, false, 'Interior wall');
       add(M.box(0.06, 0.06, divZ1 - divZ2, gold, divX2, H - 0.04, (divZ1 + divZ2) / 2));
       const rightArch = M.makeArch(doorGap, H - 0.3);
       rightArch.position.set(divX2, 0.12, 0); rightArch.rotation.y = Math.PI / 2; add(rightArch);
@@ -428,9 +504,9 @@ export class CasinoWorld {
       // Horizontal wall along officeZ from outer left wall to divX1, with doorway
       const officeWallLen = officeX - (-W / 2) - doorGap - 0.5;
       add(M.box(officeWallLen / 2, H, 0.3, roomWallMat, -W / 2 + officeWallLen / 4, H / 2, officeZ));
-      this.addCollider(-W / 2 + officeWallLen / 4, officeZ, officeWallLen / 2, 0.3);
+      this.addCollider(-W / 2 + officeWallLen / 4, officeZ, officeWallLen / 2, 0.3, false, false, 'Office wall');
       add(M.box(officeWallLen / 2, H, 0.3, roomWallMat, officeX - officeWallLen / 4, H / 2, officeZ));
-      this.addCollider(officeX - officeWallLen / 4, officeZ, officeWallLen / 2, 0.3);
+      this.addCollider(officeX - officeWallLen / 4, officeZ, officeWallLen / 2, 0.3, false, false, 'Office wall');
       add(M.box(officeX - (-W / 2), 0.06, 0.06, gold, (-W / 2 + officeX) / 2, H - 0.04, officeZ));
       const officeArch = M.makeArch(doorGap, H - 0.3);
       officeArch.position.set((-W / 2 + officeX) / 2, 0.12, officeZ); add(officeArch);
@@ -568,7 +644,7 @@ export class CasinoWorld {
       const exDesk = M.makeExecutiveDesk();
       exDesk.position.set(-W / 2 + 4, 0.12, -D / 2 + 4);
       add(exDesk);
-      this.addCollider(-W / 2 + 4, -D / 2 + 4, 3.2, 2.0);
+      this.addCollider(-W / 2 + 4, -D / 2 + 4, 3.2, 2.0, false, false, 'Executive desk');
 
       // THE AQUARIUM — centerpiece of the royal office
       const aquarium = M.makeAquarium(5, 2.0, 1.0);
@@ -576,7 +652,7 @@ export class CasinoWorld {
       aquarium.rotation.y = 0;
       add(aquarium);
       this.animated.push({ type: 'aquarium', obj: aquarium, t: 0 });
-      this.addCollider(roCX, -D / 2 + 2, 5.2, 1.2);
+      this.addCollider(roCX, -D / 2 + 2, 5.2, 1.2, false, false, 'Aquarium');
 
       // Leather sofas facing each other
       for (const [sx, sr] of [[roCX - 2.5, Math.PI / 2], [roCX + 2.5, -Math.PI / 2]]) {
@@ -752,15 +828,15 @@ export class CasinoWorld {
     if (tier === 2) {
       // Royal office — desk is built in the diablo section above, just place safe + cage in the room
       const roCX = (-W / 2 + (-W / 2 + 13)) / 2;
-      const safe = M.makeSafe(); safe.position.set(-W / 2 + 1.5, 0.12, -D / 2 + 8); safe.rotation.y = Math.PI / 2; add(safe); this.safe = safe; this.addCollider(-W / 2 + 1.5, -D / 2 + 8, 1.3, 1.5);
-      const cage = M.makeCashierCage(5); cage.position.set(-W / 2 + 8, 0.12, -D / 2 + 4); cage.rotation.y = Math.PI / 2; add(cage); this.addCollider(-W / 2 + 8, -D / 2 + 4, 0.6, 5);
+      const safe = M.makeSafe(); safe.position.set(-W / 2 + 1.5, 0.12, -D / 2 + 8); safe.rotation.y = Math.PI / 2; add(safe); this.safe = safe; this.addCollider(-W / 2 + 1.5, -D / 2 + 8, 1.3, 1.5, false, false, 'Safe');
+      const cage = M.makeCashierCage(5); cage.position.set(-W / 2 + 8, 0.12, -D / 2 + 4); cage.rotation.y = Math.PI / 2; add(cage); this.addCollider(-W / 2 + 8, -D / 2 + 4, 0.6, 5, false, false, 'Cashier cage');
       { const pl = M.makePlanter(); this.addProp(pl, 'Office Planter', -W / 2 + 0.7, -D / 2 + 0.8, 0.35, 0.35); }
       this.zones.office = { pos: new THREE.Vector3(-W / 2 + 4, 0, -D / 2 + 5.5), r: 2.0, label: 'Open Upgrades', key: 'office', icon: 'ledger' };
     } else {
       const ox = -W / 2 + 3.2, oz = -D / 2 + 2.4;
-      const desk = M.makeDesk(); desk.position.set(ox, 0.12, oz); add(desk); this.addCollider(ox, oz, 2.5, 1.3);
-      const safe = M.makeSafe(); safe.position.set(-W / 2 + 1.1, 0.12, -D / 2 + 5.4); safe.rotation.y = Math.PI / 2; add(safe); this.safe = safe; this.addCollider(-W / 2 + 1.1, -D / 2 + 5.4, 1.3, 1.5);
-      const cage = M.makeCashierCage(4.5); cage.position.set(-W / 2 + 6.2, 0.12, -D / 2 + 3.6); cage.rotation.y = Math.PI / 2; add(cage); this.addCollider(-W / 2 + 6.2, -D / 2 + 3.6, 0.6, 4.5);
+      const desk = M.makeDesk(); desk.position.set(ox, 0.12, oz); add(desk); this.addCollider(ox, oz, 2.5, 1.3, false, false, 'Office desk');
+      const safe = M.makeSafe(); safe.position.set(-W / 2 + 1.1, 0.12, -D / 2 + 5.4); safe.rotation.y = Math.PI / 2; add(safe); this.safe = safe; this.addCollider(-W / 2 + 1.1, -D / 2 + 5.4, 1.3, 1.5, false, false, 'Safe');
+      const cage = M.makeCashierCage(4.5); cage.position.set(-W / 2 + 6.2, 0.12, -D / 2 + 3.6); cage.rotation.y = Math.PI / 2; add(cage); this.addCollider(-W / 2 + 6.2, -D / 2 + 3.6, 0.6, 4.5, false, false, 'Cashier cage');
       { const rope1 = M.makeVelvetRope(2.6); rope1.rotation.y = Math.PI / 2; this.addProp(rope1, 'Office Rope', -W / 2 + 6.2, -D / 2 + 7.2, 0.2, 1.4); }
       add(M.textPlane('OFFICE · STAFF ONLY (that means me)', { w: 4.2, h: 0.5, color: '#ffd700', glowColor: '#ffd700' }).translateX(-W / 2 + 3.2).translateY(3.0).translateZ(-D / 2 + 0.22));
       { const pl = M.makePlanter(); this.addProp(pl, 'Office Planter', -W / 2 + 0.7, -D / 2 + 0.8, 0.35, 0.35); }
@@ -788,7 +864,7 @@ export class CasinoWorld {
       add(M.makeNeonSign('VIP', '#ffd700', 3, { intensity: 10 }).translateX(vx).translateY(3.2).translateZ(-D / 2 + 0.25));
       add(M.box(2.4, 0.5, 1.0, M.mat(0x8b0000, { roughness: 0.5 }), vx, 0.45, vz - 1.5)); add(M.box(2.4, 0.9, 0.25, M.mat(0x8b0000, { roughness: 0.5 }), vx, 0.8, vz - 2.0));
       add(M.cyl(0.4, 0.3, 0.5, M.mat(0x111111, { roughness: 0.2 }), vx, 0.4, vz - 0.2, 12)); add(M.cyl(0.1, 0.1, 0.4, M.CHROME(), vx, 0.85, vz - 0.2, 8)); // champagne bucket
-      this.addCollider(vx, vz - 1.6, 2.6, 1.4);
+      this.addCollider(vx, vz - 1.6, 2.6, 1.4, false, false, 'VIP area');
     }
     // =====================================================================
     // GAMING FLOOR — real casino layout: central table pit, slot pods
@@ -918,7 +994,7 @@ export class CasinoWorld {
     // =====================================================================
     // OUTSIDE PROPS FROM AD UPGRADES
     // =====================================================================
-    if (has('bus')) { const b = M.makeBus(0xffcc00, 'LUCKY DUCK · KIDS RIDE FREE*'); b.position.set(-W / 2 - 6, 0, D / 2 + 13.5); add(b); this.animated.push({ type: 'bus', obj: b, t: 0, z: D / 2 + 13.5, range: W + 110 }); }
+    if (has('bus')) { const b = M.makeBus(0xffcc00, 'LUCKY DUCK · KIDS RIDE FREE*'); b.position.set(-W / 2 - 6, 0, D / 2 + 13.5); add(b); this.animated.push({ type: 'bus', obj: b, t: 0, z: D / 2 + 13.5, range: W + 110, collider: null }); }
     if (has('shuttle')) { const s = M.makeBus(0xeeeeee, 'SUNSET ACRES → CASINO (one way)'); s.position.set(W / 2 + 9, 0, D / 2 + 8.6); s.rotation.y = 0; add(s); }
     if (has('billboard')) { const bbName = game.s.playerName ? game.s.playerName.toUpperCase() : 'VICTOR VANE'; const bb = M.makeBillboard(`${bbName} SAYS: YOU WILL WIN*`, '*results not typical. or possible.'); bb.position.set(W / 2 + 14, 0, D / 2 - 4); bb.rotation.y = -0.5; add(bb); }
     if (has('tower')) { const t = M.makeTower(0x2a0c14); t.position.set(0, 0, -D / 2 - 6); add(t); this.animated.push({ type: 'neon', obj: t.userData.sign, t: 0, flick: 0.05 }); }
@@ -1057,11 +1133,23 @@ export class CasinoWorld {
         case 'volcano': { const e = (a.t % 15) < 2.5; a.obj.userData.light.intensity = e ? 60 + Math.sin(a.t * 30) * 30 : 14; a.obj.userData.lava.scale.y = e ? 3 : 1; break; }
         case 'fire': { const fl = a.obj.userData.fireLight; fl.intensity = 5 + Math.sin(a.t * 8) * 1.5 + Math.sin(a.t * 13.7) * 0.8; break; }
         case 'wheel': a.obj.rotation.y += dt * 2; break;
-        case 'bus': a.obj.position.x = -a.range / 2 + ((a.t * 5) % a.range); break;
-        case 'car': a.obj.position.x = -a.range / 2 + ((a.t * 11) % a.range); break;
+        case 'bus': {
+          const bx = -a.range / 2 + ((a.t * 5) % a.range);
+          a.obj.position.x = bx;
+          if (a.collider) { a.collider.minX = bx - 3.2; a.collider.maxX = bx + 3.2; }
+          else { a.collider = { minX: bx - 3.2, maxX: bx + 3.2, minZ: a.z - 1.3, maxZ: a.z + 1.3, dynamic: true }; this.colliders.push(a.collider); }
+          break;
+        }
+        case 'car': {
+          const vx = -a.range / 2 + ((a.t * 11) % a.range);
+          a.obj.position.x = vx;
+          if (a.collider) { a.collider.minX = vx - 2.3; a.collider.maxX = vx + 2.3; }
+          else { a.collider = { minX: vx - 2.3, maxX: vx + 2.3, minZ: a.z - 1.1, maxZ: a.z + 1.1, dynamic: true }; this.colliders.push(a.collider); }
+          break;
+        }
         case 'cart': a.obj.position.x = a.x0 + (Math.sin(a.t * 0.3) * 0.5 + 0.5) * a.range; break;
         case 'jet': a.obj.position.y = 6 + Math.sin(a.t * 0.5) * 0.6; a.obj.rotation.z = Math.sin(a.t * 0.3) * 0.05; break;
-        case 'person': { const u = a.obj.userData; u.idleT = (u.idleT || 0) + dt; u.head.rotation.y = Math.sin(u.idleT * 0.6) * 0.5; break; }
+        case 'person': { const u = a.obj.userData; u.idleT = (u.idleT || 0) + dt; if (u.head) u.head.rotation.y = Math.sin(u.idleT * 0.6) * 0.5; break; }
         case 'aquarium': {
           const aq = a.obj.userData;
           if (!aq || !aq.fish) break;

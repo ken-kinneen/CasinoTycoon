@@ -44,12 +44,18 @@ export const STAT_ICON = { capacity: 'people', machines: 'machine', tables: 'car
 
 const MILESTONES = [
   { key: 'balance', label: 'Balance', icon: 'dollar', get: s => s.money, achIds: ['hoard_50k'], fmt: fmtMoney },
-  { key: 'earned', label: 'Lifetime Take', icon: 'dollar', get: s => s.lifetimeEarned, achIds: ['earn_1k', 'earn_5k', 'high_roller_shades', 'earn_25k', 'earn_100k', 'diamond_eyes', 'earn_500k'], fmt: fmtMoney },
+  { key: 'earned', label: 'Lifetime Take', icon: 'dollar', get: s => s.lifetimeEarned, achIds: ['earn_500', 'earn_1k', 'earn_5k', 'high_roller_shades', 'earn_25k', 'earn_100k', 'diamond_eyes', 'earn_500k'], fmt: fmtMoney },
   { key: 'guests', label: 'Guests Served', icon: 'people', get: s => s.lifetimeCustomers, achIds: ['guests_10', 'guests_50', 'street_cred', 'guests_200', 'guests_1000'], fmt: v => v.toLocaleString() },
   { key: 'time', label: 'Time on Floor', icon: 'clock', get: s => s.playTime, achIds: ['time_10', 'floor_boss', 'time_30', 'time_60'], fmt: v => { const m = Math.floor(v / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; } },
 ];
 
-const ITEM_NAMES = { toilet: 'Gold Toilet', selfstatue: 'Your Statue', namelights: 'Name in Lights', tiger: 'Pet Tiger', fountain: 'Champagne Fountain' };
+const ITEM_NAMES = {
+  planter: 'Casino Planter', velvetrope: 'Velvet Rope', toilet: 'Gold Toilet',
+  selfstatue: 'Your Statue', namelights: 'Name in Lights', fountain: 'Champagne Fountain',
+  ornateurn: 'Ornate Urn', palmtree: 'Palm Tree', tiger: 'Pet Tiger',
+  aquarium: 'Exotic Aquarium', megaphone: 'Gold Megaphone', fireplace: 'Grand Fireplace',
+  chandelier: 'Crystal Chandelier',
+};
 
 export class HUD {
   static portraitDataURL = null;
@@ -75,15 +81,17 @@ export class HUD {
     this.drawPortrait();
     this.buildCasinoModel();
     this.renderMilestones();
-    game.on('skill', () => { this.drawPortrait(); if (this._wardrobeOpen) this.renderWardrobe(); });
-    game.on('wardrobe', () => { this.drawPortrait(); if (this._wardrobeOpen) { this._drawWardrobePreview(); this.renderWardrobe(); } });
+    this.renderGoals();
+    game.on('skill', () => { this.drawPortrait(); this._rebuildSceneOwner(); if (this._wardrobeOpen) this.renderWardrobe(); });
+    game.on('wardrobe', () => { this.drawPortrait(); this._rebuildSceneOwner(); if (this._wardrobeOpen) { this._drawWardrobePreview(); this.renderWardrobe(); } });
     game.on('casino', () => this.buildCasinoModel());
-    game.on('money', () => this.renderMilestones());
+    game.on('money', () => { this.renderMilestones(); this.renderGoals(); });
     game.on('achievement', (a) => {
       const rewardText = a.reward ? ` — ${fmtMoney(a.reward)}` : '';
       _showMsg(`${a.name}${rewardText}`, { from: 'trophy', duration: 5000 });
       _showMsg(a.hint, { from: 'player', duration: 5000 });
       if (this._wardrobeOpen) this.renderWardrobe();
+      this.renderGoals();
     });
   }
   show() { this.el.classList.remove('hidden'); }
@@ -102,10 +110,21 @@ export class HUD {
     });
 
     el.innerHTML = rows.map(r => {
+      let progressHtml = '';
+      if (r.nextAch && r.nextAch.progress) {
+        const p = r.nextAch.progress(s, this.game.stats);
+        const frac = Math.min(1, p.current / p.target);
+        const targetFmt = p.fmt === 'money' ? fmtMoney(p.target) : p.target.toLocaleString();
+        progressHtml = `<div class="sb-progress-wrap">`
+          + `<div class="sb-progress-bar"><div class="sb-progress-fill" style="width:${(frac * 100).toFixed(1)}%"></div></div>`
+          + `<span class="sb-progress-label">Next: ${targetFmt}</span>`
+          + `</div>`;
+      }
       return `<div class="sb-stat-row${r.nextAch ? ' has-tip' : ''}" data-ms="${r.m.key}">` +
         `<span class="ico-slot">${ICONS[r.m.icon] || ICONS.star}</span>` +
         `<span class="sb-stat-label">${r.m.label}</span>` +
-        `<span class="sb-stat-val">${r.valText}</span></div>`;
+        `<span class="sb-stat-val">${r.valText}</span>` +
+        progressHtml + `</div>`;
     }).join('');
 
     el.querySelectorAll('.sb-stat-row.has-tip').forEach(row => {
@@ -135,6 +154,73 @@ export class HUD {
         if (tip) tip.remove();
       };
     });
+  }
+
+  renderGoals() {
+    const el = $('sb-goals-list'); if (!el) return;
+    const s = this.game.s;
+    const stats = this.game.stats;
+    const unlocked = s.achievements;
+    const MAX_GOALS = 3;
+    const PRIORITY = ['money', 'guests', 'growth', 'time'];
+
+    const pending = ACHIEVEMENTS.filter(a => {
+      if (unlocked.includes(a.id)) return false;
+      if (a.hidden) return false;
+      if (a.category === 'early') return false;
+      if (a.requires && !unlocked.includes(a.requires)) return false;
+      if (!a.progress) return false;
+      return true;
+    });
+
+    // One goal per category so the panel stays diverse and actionable
+    const byCategory = {};
+    for (const a of pending) {
+      const cat = a.category || 'other';
+      if (!byCategory[cat]) byCategory[cat] = a;
+    }
+    const goals = [];
+    for (const cat of PRIORITY) {
+      if (byCategory[cat] && goals.length < MAX_GOALS) goals.push(byCategory[cat]);
+    }
+    for (const a of pending) {
+      if (goals.length >= MAX_GOALS) break;
+      if (!goals.includes(a)) goals.push(a);
+    }
+
+    const wrap = $('sb-next-goals');
+    if (wrap) wrap.classList.toggle('hidden', goals.length === 0);
+    if (!goals.length) { el.innerHTML = ''; return; }
+
+    el.innerHTML = goals.map(a => {
+      const p = a.progress(s, stats);
+      const frac = Math.min(1, p.current / p.target);
+      const pct = Math.floor(frac * 100);
+      const fmtVal = (v, fmt) => fmt === 'money' ? fmtMoney(v)
+        : fmt === 'time' ? `${Math.floor(v / 60)}m` : Math.floor(v).toLocaleString();
+      const curFmt = fmtVal(p.current, p.fmt);
+      const targetFmt = fmtVal(p.target, p.fmt);
+      const rewards = [];
+      if (a.reward) rewards.push(fmtMoney(a.reward));
+      if (a.item) rewards.push(ITEM_NAMES[a.item] || a.item);
+      if (a.cosmetic) {
+        const cos = COSMETICS.find(c => c.key === a.cosmetic);
+        if (cos) rewards.push(cos.name);
+      }
+      const rewardHtml = rewards.length
+        ? `<div class="sb-goal-rewards">${icon('star')} ${rewards.join(' · ')}</div>` : '';
+      return `<div class="sb-goal">`
+        + `<div class="sb-goal-hint">${a.hint}</div>`
+        + `<div class="sb-goal-progress">`
+        + `<div class="sb-goal-bar"><div class="sb-goal-fill" style="width:${frac * 100}%"></div></div>`
+        + `<span class="sb-goal-pct">${pct}%</span>`
+        + `</div>`
+        + `<div class="sb-goal-foot">`
+        + `<span class="sb-goal-label">${curFmt} / ${targetFmt}</span>`
+        + rewardHtml
+        + `</div>`
+        + `</div>`;
+    }).join('');
   }
 
   // ---- wardrobe panel --------------------------------------------------------
@@ -438,21 +524,7 @@ export class HUD {
     const hits = this._pvRaycaster.intersectObjects(this._pvModel.children, true);
     if (!hits.length) return;
 
-    const u = this._pvModel.userData;
-    const parts = { head: u.head, armL: u.armL, armR: u.armR, legL: u.legL, legR: u.legR, body: u.body };
-    let hitPart = null;
-    for (const hit of hits) {
-      let obj = hit.object;
-      while (obj && obj !== this._pvModel) {
-        for (const [name, ref] of Object.entries(parts)) {
-          if (ref && obj === ref) { hitPart = name; break; }
-        }
-        if (hitPart) break;
-        obj = obj.parent;
-      }
-      if (hitPart) break;
-    }
-    if (!hitPart) hitPart = 'body';
+    const hitPart = 'body';
 
     const QUIPS = ["Hey!", "Stop.", "Ow.", "Quit it.", "No.", "What?", "Hm?", "Easy.", "Rude.", "Why?"];
     const msgs = QUIPS;
@@ -516,21 +588,24 @@ export class HUD {
     this._cvRenderer.toneMappingExposure = 1.2;
 
     this._cvScene = new THREE.Scene();
-    this._cvCam = new THREE.PerspectiveCamera(30, c.width / c.height, 0.1, 100);
-    this._cvCam.position.set(0, 4, 15);
-    this._cvCam.lookAt(0, 2.0, 0);
+    this._cvCam = new THREE.PerspectiveCamera(38, c.width / c.height, 0.1, 100);
+    this._cvCam.position.set(2.0, 2.5, 18);
+    this._cvCam.lookAt(0.5, 2.0, 0);
 
     this._cvScene.add(new THREE.AmbientLight(0xc0b8d0, 0.8));
     const key = new THREE.DirectionalLight(0xffe8c0, 2.0);
-    key.position.set(0, 6, 8); this._cvScene.add(key);
+    key.position.set(2, 6, 8); this._cvScene.add(key);
     const warm = new THREE.PointLight(0xffc840, 12, 20, 1.5);
     warm.position.set(0, 3, 6); this._cvScene.add(warm);
     const neon = new THREE.PointLight(0xff2e88, 5, 16, 1.5);
     neon.position.set(-3, 4, 4); this._cvScene.add(neon);
     const fill = new THREE.PointLight(0x4060ff, 3, 16, 1.5);
     fill.position.set(3, 3, 4); this._cvScene.add(fill);
+    const ownerLight = new THREE.PointLight(0xffe0b0, 6, 12, 1.5);
+    ownerLight.position.set(4, 3, 10); this._cvScene.add(ownerLight);
 
     this._cvModel = null;
+    this._cvOwner = null;
     this._cvT = 0;
   }
 
@@ -543,26 +618,45 @@ export class HUD {
     const tier = def.id === 'duck' ? 0 : def.id === 'rat' ? 1 : 2;
     const g = new THREE.Group();
 
-    const brickTex = T.brickTexture(
-      tier === 2 ? '#c8c0b8' : tier === 1 ? '#2a2a34' : '#3b2418',
-      tier === 2 ? '#a8a098' : tier === 1 ? '#15151c' : '#1a0e08'
-    );
-    const wallMat = M.texMat(brickTex, { roughness: 0.9 });
     const gold = M.GOLD();
 
     const bw = tier === 2 ? 8 : tier === 1 ? 6 : 4.5;
     const bh = tier === 2 ? 7 : tier === 1 ? 5 : 3.5;
     const bd = tier === 2 ? 5 : tier === 1 ? 4 : 3;
 
-    g.add(M.box(bw, bh, bd, wallMat, 0, bh / 2, 0));
-    g.add(M.box(bw + 0.1, 0.15, bd + 0.1, gold, 0, bh + 0.08, 0));
-
-    const doorW = tier === 2 ? 1.6 : 1.0;
-    const doorH = tier === 2 ? 2.8 : 2.0;
-    g.add(M.box(doorW, doorH, 0.15, M.mat(0x1a0a06, { roughness: 0.3 }), 0, doorH / 2, bd / 2 + 0.05));
-    g.add(M.box(doorW + 0.3, 0.1, 0.2, gold, 0, doorH + 0.1, bd / 2 + 0.05));
-
-    if (tier > 0) {
+    if (tier === 0) {
+      // Duck preview: use the real 3D facade model, scaled to fit the preview
+      const realW = def.width;   // 18
+      const realH = 4.8;
+      const realD = def.depth;   // 14
+      const facade = M.makeDuckFacade(realW, realH);
+      const facadeH = realH + 3.0; // matches FH in makeDuckFacade
+      const sc = bh / facadeH;     // scale to fit preview height
+      const building = new THREE.Group();
+      facade.position.set(0, 0, realD / 2 * sc);
+      facade.scale.setScalar(sc);
+      building.add(facade);
+      // side + back walls
+      const tileClad = M.mat(0xd0c4a8, { roughness: 0.7 });
+      const sw = realW * sc, sd = realD * sc, sh = facadeH * sc;
+      building.add(M.box(sw, sh, 0.15, tileClad, 0, sh / 2, -sd / 2));
+      building.add(M.box(0.15, sh, sd, tileClad, -sw / 2, sh / 2, 0));
+      building.add(M.box(0.15, sh, sd, tileClad, sw / 2, sh / 2, 0));
+      // roof cap
+      building.add(M.box(sw + 0.1, 0.12, sd + 0.1, M.mat(0x888890, { roughness: 0.6 }), 0, sh + 0.06, 0));
+      g.add(building);
+    } else {
+      const brickTex = T.brickTexture(
+        tier === 2 ? '#c8c0b8' : '#2a2a34',
+        tier === 2 ? '#a8a098' : '#15151c'
+      );
+      const wallMat = M.texMat(brickTex, { roughness: 0.9 });
+      g.add(M.box(bw, bh, bd, wallMat, 0, bh / 2, 0));
+      g.add(M.box(bw + 0.1, 0.15, bd + 0.1, gold, 0, bh + 0.08, 0));
+      const doorW = tier === 2 ? 1.6 : 1.0;
+      const doorH = tier === 2 ? 2.8 : 2.0;
+      g.add(M.box(doorW, doorH, 0.15, M.mat(0x1a0a06, { roughness: 0.3 }), 0, doorH / 2, bd / 2 + 0.05));
+      g.add(M.box(doorW + 0.3, 0.1, 0.2, gold, 0, doorH + 0.1, bd / 2 + 0.05));
       for (let i = 0; i < (tier === 2 ? 3 : 2); i++) {
         const wx = -bw / 2 + 1.2 + i * (bw - 2.4) / (tier === 2 ? 2 : 1);
         const wy = bh * 0.55;
@@ -572,11 +666,23 @@ export class HUD {
 
     const signColor = '#' + def.signColor.toString(16).padStart(6, '0');
     const shortName = this.game.casinoDisplayName().replace(', Las Vegas', '').toUpperCase();
-    const sign = M.makeNeonSign(shortName.length > 12 ? shortName.slice(0, 12) : shortName, signColor, Math.min(bw - 0.5, 5), { intensity: 15 });
-    sign.position.set(0, bh + 1, bd / 2 + 0.2);
-    g.add(sign);
+    if (tier === 0) {
+      const sc = bh / (4.8 + 3.0);
+      const sw = def.width * sc, sd = def.depth * sc, sh = (4.8 + 3.0) * sc;
+      const sign = M.makeNeonSign(shortName.length > 12 ? shortName.slice(0, 12) : shortName, signColor, Math.min(sw - 0.5, 7), { intensity: 15 });
+      sign.position.set(0, sh + 1.0, sd / 2 + 0.3);
+      g.add(sign);
+      this._cvNeonSign = sign;
+    } else {
+      const sign = M.makeNeonSign(shortName.length > 12 ? shortName.slice(0, 12) : shortName, signColor, Math.min(bw - 0.5, 5), { intensity: 15 });
+      sign.position.set(0, bh + 1, bd / 2 + 0.2);
+      g.add(sign);
+      this._cvNeonSign = sign;
+    }
 
     if (tier >= 1) {
+      const doorW = tier === 2 ? 1.6 : 1.0;
+      const doorH = tier === 2 ? 2.8 : 2.0;
       const awning = M.box(doorW + 1, 0.12, 1.0, M.mat(0x8b0000, { roughness: 0.5 }), 0, doorH + 0.3, bd / 2 + 0.5);
       g.add(awning);
     }
@@ -586,23 +692,55 @@ export class HUD {
       }
     }
 
-    const ground = M.box(bw + 4, 0.06, bd + 4, M.mat(0x0b0b10, { roughness: 0.15, metalness: 0.1 }), 0, -0.03, 0);
+    const gw = tier === 0 ? def.width * (bh / (4.8 + 3.0)) + 4 : bw + 4;
+    const ground = M.box(gw + 8, 0.06, 22, M.mat(0x0b0b10, { roughness: 0.15, metalness: 0.1 }), 0, -0.03, 5);
     g.add(ground);
-    const sidewalk = M.box(bw + 2, 0.08, 1.5, M.mat(0x2e2e34, { roughness: 0.85 }), 0, 0.01, bd / 2 + 1.5);
+    const sidewalk = M.box(gw, 0.08, 1.5, M.mat(0x2e2e34, { roughness: 0.85 }), 0, 0.01, bd / 2 + 1.5);
     g.add(sidewalk);
+    const parking = M.box(gw + 2, 0.07, 10, M.mat(0x141418, { roughness: 0.3, metalness: 0.05 }), 0, -0.01, bd / 2 + 6);
+    g.add(parking);
 
     g.position.set(0, 0, 0);
     this._cvScene.add(g);
     this._cvModel = g;
-    this._cvNeonSign = sign;
+
+    // player figure in the foreground
+    if (this._cvOwner) { this._cvScene.remove(this._cvOwner); this._cvOwner = null; }
+    const owner = makeOwner(this.game.s.skills, this.game.wardrobeMap());
+    owner.position.set(3.2, 0, 9.5);
+    owner.rotation.y = -0.35;
+    owner.scale.setScalar(1.15);
+    this._cvScene.add(owner);
+    this._cvOwner = owner;
   }
 
   /** Render one frame of the casino preview. */
   _renderCasinoPreview(dt) {
     if (!this._cvRenderer || !this._cvModel) return;
     this._cvT += dt;
-    this._cvModel.rotation.y = Math.sin(this._cvT * 0.15) * 0.15;
+    this._cvModel.rotation.y = Math.sin(this._cvT * 0.15) * 0.08;
+
+    if (this._cvOwner) {
+      const u = this._cvOwner.userData;
+      const t = this._cvT;
+      if (u && u.head) u.head.rotation.y = Math.sin(t * 0.6) * 0.15;
+      if (u && u.armL) u.armL.rotation.x = Math.sin(t * 0.8) * 0.08;
+      if (u && u.armR) u.armR.rotation.x = Math.sin(t * 0.8 + 1) * 0.08;
+    }
+
     this._cvRenderer.render(this._cvScene, this._cvCam);
+  }
+
+  /** Refresh the player figure in the casino scene preview after wardrobe/skill changes. */
+  _rebuildSceneOwner() {
+    if (!this._cvScene) return;
+    if (this._cvOwner) { this._cvScene.remove(this._cvOwner); this._cvOwner = null; }
+    const owner = makeOwner(this.game.s.skills, this.game.wardrobeMap());
+    owner.position.set(3.2, 0, 9.5);
+    owner.rotation.y = -0.35;
+    owner.scale.setScalar(1.15);
+    this._cvScene.add(owner);
+    this._cvOwner = owner;
   }
 
   /** Rebuild the 3D owner model and title text. */
@@ -610,10 +748,11 @@ export class HUD {
     if (!this._pvScene) return;
     if (this._pvModel) { this._pvScene.remove(this._pvModel); this._pvModel = null; }
     const sk = this.game.s.skills;
-    this._pvModel = makeOwner(sk, this.game.wardrobeMap());
-    this._pvModel.position.set(0, 0, 0);
-    this._pvModel.rotation.y = 0.3;
-    this._pvScene.add(this._pvModel);
+    const m = makeOwner(sk, this.game.wardrobeMap());
+    m.position.set(0, 0, 0);
+    m.rotation.y = 0.3;
+    this._pvScene.add(m);
+    this._pvModel = m;
     const total = Object.values(sk).reduce((a, b) => a + b, 0);
     $('portrait-title').textContent = total >= 20 ? 'KINGPIN' : total >= 12 ? 'RACKETEER' : total >= 6 ? 'OPERATOR' : total >= 2 ? 'HUSTLER' : 'PROPRIETOR';
   }
@@ -681,6 +820,7 @@ export class HUD {
     if (this.achAcc >= 2) {
       this.achAcc = 0;
       this.renderMilestones();
+      this.renderGoals();
       this.game.checkAchievements();
     }
   }

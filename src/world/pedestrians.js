@@ -1,7 +1,7 @@
 // Pedestrians: ambient NPCs that walk along the sidewalk outside the casino.
 // The player can walk up to any of them and press F to start the ad minigame.
 import * as THREE from 'three';
-import { makePedestrian, animatePerson, applyDifficultyTint } from './people.js';
+import { makePedestrian, animatePerson, applyDifficultyTint, setGaze } from './people.js';
 import { rollDifficulty } from './customers.js';
 
 const MAX_PEDS = 8;
@@ -114,7 +114,7 @@ export class PedestrianManager {
       if (p.stopped) {
         p.stopTimer -= dt;
         p.walkT += dt;
-        animatePerson(g, dt, { walking: false, walkT: p.walkT, drunk: p.type === 'drunk' });
+        animatePerson(g, dt, { walking: false, walkT: p.walkT, drunk: p.type === 'drunk', speed: 0 });
         if (p.stopTimer <= 0) {
           p.stopped = false;
           p.stopAt = undefined;
@@ -124,16 +124,19 @@ export class PedestrianManager {
         g.position.x += dir * p.speed * dt;
         g.rotation.y = goRight ? Math.PI / 2 : -Math.PI / 2;
         p.walkT += dt;
-        animatePerson(g, dt, { walking: true, walkT: p.walkT, drunk: p.type === 'drunk' });
+        animatePerson(g, dt, { walking: true, walkT: p.walkT, drunk: p.type === 'drunk', speed: p.speed });
       }
 
-      if (p === this.highlighted) {
+      if (p === this.highlighted && playerPos) {
+        setGaze(g, playerPos);
         const ind = g.userData.diffIndicator;
         if (ind) {
           const pulse = 1.2 + Math.sin(Date.now() * 0.006) * 0.4;
           ind.scale.setScalar(pulse);
           ind.material.opacity = 1;
         }
+      } else {
+        setGaze(g, null);
       }
 
       if ((goRight && g.position.x > p.endX) || (!goRight && g.position.x < p.endX)) {

@@ -123,7 +123,7 @@ export class DevPanel {
   }
 
   _buildTutorialSection() {
-    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'buy_slot', 'place_slot', 'earn_500', 'done'];
+    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'place_slot', 'earn_500', 'done'];
     return `
     <div class="dp-section">
       <div class="dp-section-title">TUTORIAL</div>
@@ -717,7 +717,7 @@ export class DevPanel {
   }
 
   _refreshTutorial() {
-    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'buy_slot', 'place_slot', 'earn_500', 'done'];
+    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'place_slot', 'earn_500', 'done'];
     const step = game.s.tutorialStep || 0;
     const el = $('dp-tut-step');
     if (el) el.textContent = `${step} (${STEP_NAMES[step] || '?'})`;
@@ -739,7 +739,7 @@ export class DevPanel {
     }
     game.s.won = true;
     game.s.tutorialComplete = true;
-    game.s.tutorialStep = 10;
+    game.s.tutorialStep = 9;
     game.recompute(); game.save();
     game.emit('upgrade', {}); game.emit('skill', {});
     this.cbs.onCasinoChange(game.s.casino);

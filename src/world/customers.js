@@ -1,7 +1,7 @@
 // Customers: spawned by walk-in traffic or successful ad cards, walk in through
 // the door, find a machine or table seat, spend money into the hopper, and leave.
 import * as THREE from 'three';
-import { makeCustomer, animatePerson, applyDifficultyTint } from './people.js';
+import { makeCustomer, animatePerson, applyDifficultyTint, setGaze, setMood } from './people.js';
 
 export const TYPE_INFO = {
   drunk:   { label: 'Drunk',   spend: 1.2, margin: 8, bet: 60,  speed: 1.2 },
@@ -154,7 +154,7 @@ export class CustomerManager {
           if (c.type === 'drunk') g.position.x += Math.sin(c.walkT * 5) * dt * 0.6;
         }
         c.walkT += dt;
-        animatePerson(g, dt, { walking: true, walkT: c.walkT, drunk: c.type === 'drunk' });
+        animatePerson(g, dt, { walking: true, walkT: c.walkT, drunk: c.type === 'drunk', speed: c.speed });
         continue;
       }
 
@@ -168,9 +168,14 @@ export class CustomerManager {
         if (c.machine) {
           g.rotation.y = Math.atan2(c.machine.pos.x - g.position.x, c.machine.pos.z - g.position.z);
           g.position.y = 0.19;
-          u.legL.rotation.x = -Math.PI / 2;
-          u.legR.rotation.x = -Math.PI / 2;
-        } else g.lookAt(c.table.pos.x, g.position.y, c.table.pos.z);
+          if (u.legL) u.legL.rotation.x = -Math.PI / 2;
+          if (u.legR) u.legR.rotation.x = -Math.PI / 2;
+          setGaze(g, c.machine.group);
+        } else {
+          g.lookAt(c.table.pos.x, g.position.y, c.table.pos.z);
+          setGaze(g, c.table.group || null);
+        }
+        if (u._mannerisms) u._mannerisms.context = 'seated';
         g.rotation.z = 0;
       } else if (c.state === 'using') {
         c.useTimer -= dt;
@@ -179,15 +184,15 @@ export class CustomerManager {
         this.game.addMoney(spend, 'guest');
         c.spent += spend;
         if (c.machine) {
-          u.legL.rotation.x = -Math.PI / 2;
-          u.legR.rotation.x = -Math.PI / 2;
-          u.body.scale.y = 1 + Math.sin(c.walkT * 2) * 0.01;
-          u.head.rotation.y = Math.sin(c.walkT * 0.7) * 0.15;
-          u.armR.rotation.x = Math.sin(c.walkT * 4) > 0.6 ? -1.7 : -0.4;
-          u.armL.rotation.x = -0.3;
+          if (u.legL) u.legL.rotation.x = -Math.PI / 2;
+          if (u.legR) u.legR.rotation.x = -Math.PI / 2;
+          if (u.head) u.head.rotation.y = Math.sin(c.walkT * 0.7) * 0.15;
+          if (u.armR) u.armR.rotation.x = Math.sin(c.walkT * 4) > 0.6 ? -1.7 : -0.4;
+          if (u.armL) u.armL.rotation.x = -0.3;
         } else {
           animatePerson(g, dt, { walking: false, walkT: c.walkT, drunk: c.type === 'drunk' });
-          u.armL.rotation.x = -0.9 + Math.sin(c.walkT * 2) * 0.2; u.armR.rotation.x = -0.7;
+          if (u.armL) u.armL.rotation.x = -0.9 + Math.sin(c.walkT * 2) * 0.2;
+          if (u.armR) u.armR.rotation.x = -0.7;
         }
         if (c.useTimer <= 0) this.leave(c);
       } else if (c.state === 'leaving') {

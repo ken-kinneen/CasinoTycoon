@@ -19,7 +19,7 @@ const _hit = new THREE.Vector3();
 
 function snap(v) { return Math.round(v / GRID) * GRID; }
 
-const FOOTPRINT = { machine: { hw: 0.6, hd: 0.6 }, table: { hw: 2.0, hd: 1.6 }, prop: { hw: 1.0, hd: 1.0 } };
+const FOOTPRINT = { machine: { hw: 0.55, hd: 0.55 }, table: { hw: 1.8, hd: 1.4 }, prop: { hw: 1.0, hd: 1.0 } };
 
 export class FloorEditor {
   constructor(scene, camera, canvas, world) {
@@ -36,6 +36,8 @@ export class FloorEditor {
     this.arrangeMode = false; // when true, clicking any item picks it up immediately
     this._savedPos = null;    // snap-back on cancel
     this._placementValid = true;
+    this._placementReason = null;
+    this._rejectFlash = 0;
 
     this.playerPos = new THREE.Vector3();
     this._clickScreenPos = { x: 0, y: 0 };
@@ -44,19 +46,25 @@ export class FloorEditor {
     this.onSelect = null;     // (info|null, screenPos)
     this.onChange = null;      // ()
     this.onMoveUpdate = null; // (screenX, screenY, valid) — called each frame during move
+    this.onPlacementRejected = null; // (reason) — called when click in invalid spot
 
     // visual indicators
-    this.hoverRing = this._makeRing(0x38e8ff, 0.5, 0.08);
-    this.hoverRing.visible = false;
-    scene.add(this.hoverRing);
+    this._glowMeshes = [];  // hover glow
+    this._glowT = 0;
+    this._moveGlowMeshes = [];  // blue pulse while moving
+    this._confirmGlowMeshes = [];  // green flash after placing
+    this._confirmGlowTimer = -1;
 
-    this.selectRing = this._makeSelectRing();
-    this.selectRing.visible = false;
-    scene.add(this.selectRing);
+    this._selectGlowMeshes = [];  // [{mesh, origEmissive, origIntensity}]
 
     this.validRing = this._makeRing(0x44ff44, 0.6, 0.15);
     this.validRing.visible = false;
     scene.add(this.validRing);
+
+    this.confirmFx = this._makeConfirmFx();
+    this.confirmFx.visible = false;
+    scene.add(this.confirmFx);
+    this._confirmTimer = -1;
 
     // bound handlers
     this._onDown = this._onDown.bind(this);
@@ -70,12 +78,13 @@ export class FloorEditor {
   start() {
     if (this.enabled) return;
     this.enabled = true;
-    // canvas gets mousedown so it only fires on the 3D viewport
-    this.canvas.addEventListener('mousedown', this._onDown);
+    this.canvas.addEventListener('pointerdown', this._onDown);
     this.canvas.addEventListener('contextmenu', this._onCtx);
-    // mousemove on window so we track even when cursor leaves canvas
-    window.addEventListener('mousemove', this._onMove);
+    window.addEventListener('pointermove', this._onMove);
     window.addEventListener('keydown', this._onKey);
+    // prevent legacy mousedown from leaking to camera orbit when editor handles the click
+    this._onMouseBlock = (e) => { if (this._handledPointer) { e.stopImmediatePropagation(); this._handledPointer = false; } };
+    this.canvas.addEventListener('mousedown', this._onMouseBlock);
   }
 
   stop() {
@@ -83,10 +92,11 @@ export class FloorEditor {
     this.enabled = false;
     this.deselect();
     this._clearHover();
-    this.canvas.removeEventListener('mousedown', this._onDown);
+    this.canvas.removeEventListener('pointerdown', this._onDown);
     this.canvas.removeEventListener('contextmenu', this._onCtx);
-    window.removeEventListener('mousemove', this._onMove);
+    window.removeEventListener('pointermove', this._onMove);
     window.removeEventListener('keydown', this._onKey);
+    if (this._onMouseBlock) this.canvas.removeEventListener('mousedown', this._onMouseBlock);
   }
 
   setWorld(world) {
@@ -110,33 +120,75 @@ export class FloorEditor {
     return g;
   }
 
-  _makeSelectRing() {
-    const g = new THREE.Group();
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.9, 1.05, 32),
-      new THREE.MeshBasicMaterial({ color: 0x38e8ff, transparent: true, opacity: 0.75, side: THREE.DoubleSide, toneMapped: false })
-    );
-    ring.rotation.x = -Math.PI / 2;
-    g.add(ring);
-    const inner = new THREE.Mesh(
-      new THREE.CircleGeometry(0.9, 32),
-      new THREE.MeshBasicMaterial({ color: 0x38e8ff, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
-    );
-    inner.rotation.x = -Math.PI / 2;
-    g.add(inner);
-    const arrowMat = new THREE.MeshBasicMaterial({ color: 0x38e8ff, transparent: true, opacity: 0.5, toneMapped: false });
-    const arrows = new THREE.Group();
-    for (let i = 0; i < 4; i++) {
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 6), arrowMat);
-      const a = (i * Math.PI) / 2;
-      arrow.position.set(Math.sin(a) * 1.25, 0.15, Math.cos(a) * 1.25);
-      arrow.lookAt(arrow.position.clone().multiplyScalar(2));
-      arrow.rotateX(Math.PI / 2);
-      arrows.add(arrow);
+  _collectMeshes(obj) {
+    const list = [];
+    obj.traverse(c => {
+      if (c.isMesh && c.material && c.material.emissive) {
+        const orig = c.material;
+        const clone = orig.clone();
+        c.material = clone;
+        list.push({
+          mesh: c,
+          origMat: orig,
+          origColor: orig.emissive.getHex(),
+          origIntensity: orig.emissiveIntensity || 0,
+        });
+      }
+    });
+    return list;
+  }
+
+  _restoreMeshes(list) {
+    for (const g of list) {
+      g.mesh.material.dispose();
+      g.mesh.material = g.origMat;
     }
-    g.add(arrows);
-    g.userData = { ring, inner, arrows };
+  }
+
+  _tintColor = new THREE.Color();
+
+  _applyTint(meshList, tintHex, blend, intensityBoost) {
+    this._tintColor.setHex(tintHex);
+    for (const g of meshList) {
+      g.mesh.material.emissive.setHex(g.origColor);
+      g.mesh.material.emissive.lerp(this._tintColor, blend);
+      g.mesh.material.emissiveIntensity = g.origIntensity + intensityBoost;
+    }
+  }
+
+  _applySelectGlow(obj) {
+    this._clearSelectGlow();
+    this._selectGlowMeshes = this._collectMeshes(obj);
+  }
+
+  _clearSelectGlow() {
+    this._restoreMeshes(this._selectGlowMeshes);
+    this._selectGlowMeshes = [];
+  }
+
+  _makeConfirmFx() {
+    const g = new THREE.Group();
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(1.0, 32),
+      new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.45, side: THREE.DoubleSide, toneMapped: false, depthWrite: false })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    g.add(disc);
+    const burst = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, 1.0, 32),
+      new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.7, side: THREE.DoubleSide, toneMapped: false, depthWrite: false })
+    );
+    burst.rotation.x = -Math.PI / 2;
+    g.add(burst);
+    g.userData = { disc, burst };
     return g;
+  }
+
+  _playConfirmFx(x, z, scale) {
+    this._confirmTimer = 0;
+    this.confirmFx.position.set(x, 0.2, z);
+    this.confirmFx.visible = true;
+    this.confirmFx.userData.baseScale = scale;
   }
 
   // --- raycasting -----------------------------------------------------------
@@ -196,22 +248,21 @@ export class FloorEditor {
   // --- hover ----------------------------------------------------------------
 
   _clearHover() {
+    this._restoreMeshes(this._glowMeshes);
+    this._glowMeshes = [];
+    this._glowT = 0;
     this.hovered = null;
-    this.hoverRing.visible = false;
     if (!this.moveMode) this.canvas.style.cursor = '';
   }
 
   _setHover(info) {
     if (this._isSame(this.hovered, info)) return;
+    this._restoreMeshes(this._glowMeshes);
+    this._glowMeshes = [];
+    this._glowT = 0;
     this.hovered = info;
-    if (!info || this._isSame(info, this.selected)) {
-      this.hoverRing.visible = false;
-      return;
-    }
-    this.hoverRing.visible = true;
-    const s = info.type === 'table' ? 2.0 : info.type === 'prop' ? Math.max(info.data.hw, info.data.hd) * 1.1 : 1.0;
-    this.hoverRing.scale.setScalar(s);
-    this.hoverRing.position.set(info.obj.position.x, 0.16, info.obj.position.z);
+    if (!info || this._isSame(info, this.selected)) return;
+    this._glowMeshes = this._collectMeshes(info.obj);
     if (!this.moveMode) this.canvas.style.cursor = 'pointer';
   }
 
@@ -219,17 +270,18 @@ export class FloorEditor {
 
   select(info) {
     if (this.moveMode) this.cancelMove();
+    this._clearSelectGlow();
+    this._clearHover();
     this.selected = info;
-    this.selectRing.visible = true;
-    this._syncSelectRing();
+    if (info) this._applySelectGlow(info.obj);
     this._emitSelect();
   }
 
   deselect() {
     if (!this.selected) return;
     if (this.moveMode) this.cancelMove();
+    this._clearSelectGlow();
     this.selected = null;
-    this.selectRing.visible = false;
     this._emitSelect();
   }
 
@@ -238,16 +290,12 @@ export class FloorEditor {
   }
 
   _syncSelectRing() {
-    if (!this.selected) return;
-    const p = this.selected.obj.position;
-    this.selectRing.position.set(p.x, 0.16, p.z);
-    const sc = this.selected.type === 'table' ? 2.0 : this.selected.type === 'prop' ? Math.max(this.selected.data.hw, this.selected.data.hd) * 1.1 : 1.0;
-    this.selectRing.scale.setScalar(sc);
+    // no-op: selection now uses emissive glow, not a ring
   }
 
   // --- MOVING state ---------------------------------------------------------
 
-  enterMoveMode() {
+  enterMoveMode(initialEvent) {
     if (!this.selected || this.moveMode) return;
     this.moveMode = true;
     this._savedPos = {
@@ -257,9 +305,14 @@ export class FloorEditor {
     };
     this._placementValid = true;
     this.canvas.style.cursor = 'none';
-    this.validRing.visible = true;
-    this.hoverRing.visible = false;
+    this._clearHover();
+    // blue move glow on the item being moved
+    this._moveGlowMeshes = this._collectMeshes(this.selected.obj);
     this._emitSelect();
+    // snap item to current cursor position so it doesn't sit at (0,0)
+    if (initialEvent) {
+      this._onMove(initialEvent);
+    }
   }
 
   cancelMove() {
@@ -271,11 +324,25 @@ export class FloorEditor {
       this.selected.data.pos.set(this._savedPos.x, 0, this._savedPos.z);
       this._updateUsePos(this.selected);
     }
+    this._restoreMeshes(this._moveGlowMeshes || []);
+    this._moveGlowMeshes = [];
     this._finishMove();
   }
 
   confirmMove() {
-    if (!this.moveMode || !this.selected || !this._placementValid) return;
+    if (!this.moveMode || !this.selected) return;
+    if (!this._placementValid) {
+      this._rejectFlash = 0.3;
+      if (this.onPlacementRejected) this.onPlacementRejected(this._placementReason);
+      return;
+    }
+    const px = this.selected.obj.position.x;
+    const pz = this.selected.obj.position.z;
+    const sc = this.selected.type === 'table' ? 2.0 : this.selected.type === 'prop' ? Math.max(this.selected.data.hw, this.selected.data.hd) * 1.1 : 1.0;
+    // start green confirm glow on the placed item
+    this._confirmGlowMeshes = this._moveGlowMeshes || this._collectMeshes(this.selected.obj);
+    this._confirmGlowTimer = 0;
+    this._moveGlowMeshes = [];
     this._finishMove();
     if (this.onChange) this.onChange();
   }
@@ -284,6 +351,7 @@ export class FloorEditor {
     this.moveMode = false;
     this._savedPos = null;
     this._placementValid = true;
+    this._placementReason = null;
     this.validRing.visible = false;
     this.canvas.style.cursor = '';
     this._syncSelectRing();
@@ -297,42 +365,57 @@ export class FloorEditor {
     return FOOTPRINT[item.type] || FOOTPRINT.machine;
   }
 
+  _getRotatedFootprint(fp, ry) {
+    const turns = Math.round(ry / (Math.PI / 2)) & 3;
+    return (turns === 1 || turns === 3) ? { hw: fp.hd, hd: fp.hw } : fp;
+  }
+
   _checkPlacement(x, z, type, skipIndex) {
     let fp = FOOTPRINT[type] || FOOTPRINT.machine;
     if (type === 'prop' && this.selected && this.selected.data) {
       fp = { hw: this.selected.data.hw, hd: this.selected.data.hd };
     }
-    const hw = fp.hw + 0.3;
-    const hd = fp.hd + 0.3;
+    const ry = this.selected ? this.selected.obj.rotation.y : 0;
+    fp = this._getRotatedFootprint(fp, ry);
+    const PAD = 0.1;
+    const hw = fp.hw + PAD;
+    const hd = fp.hd + PAD;
 
     for (const c of this.world.colliders) {
+      if (c.dynamic || c.wall) continue;
       if ((x + hw) > c.minX && (x - hw) < c.maxX &&
-          (z + hd) > c.minZ && (z - hd) < c.maxZ) return false;
+          (z + hd) > c.minZ && (z - hd) < c.maxZ) {
+        return c.label || 'Blocked by obstacle';
+      }
     }
 
     const W = this.world.W, D = this.world.D;
-    if (x - hw < -W / 2 + 0.5 || x + hw > W / 2 - 0.5) return false;
-    if (z - hd < -D / 2 + 0.5 || z + hd > D / 2 - 0.5) return false;
+    const WALL_INSET = 0.05;
+    if (x - hw < -W / 2 + WALL_INSET || x + hw > W / 2 - WALL_INSET) return 'Too close to wall';
+    if (z - hd < -D / 2 + WALL_INSET || z + hd > D / 2 - WALL_INSET) return 'Too close to wall';
 
     for (let i = 0; i < this.world.machines.length; i++) {
       if (type === 'machine' && i === skipIndex) continue;
       const m = this.world.machines[i];
-      if (Math.abs(x - m.pos.x) < hw + FOOTPRINT.machine.hw &&
-          Math.abs(z - m.pos.z) < hd + FOOTPRINT.machine.hd) return false;
+      const mfp = this._getRotatedFootprint(FOOTPRINT.machine, m.group.rotation.y);
+      if (Math.abs(x - m.pos.x) < hw + mfp.hw &&
+          Math.abs(z - m.pos.z) < hd + mfp.hd) return `Overlaps Machine #${i + 1}`;
     }
     for (let i = 0; i < this.world.tables.length; i++) {
       if (type === 'table' && i === skipIndex) continue;
       const t = this.world.tables[i];
-      if (Math.abs(x - t.pos.x) < hw + FOOTPRINT.table.hw &&
-          Math.abs(z - t.pos.z) < hd + FOOTPRINT.table.hd) return false;
+      const tfp = this._getRotatedFootprint(FOOTPRINT.table, t.group.rotation.y);
+      if (Math.abs(x - t.pos.x) < hw + tfp.hw &&
+          Math.abs(z - t.pos.z) < hd + tfp.hd) return `Overlaps Table #${i + 1}`;
     }
     for (let i = 0; i < this.world.props.length; i++) {
       if (type === 'prop' && i === skipIndex) continue;
       const p = this.world.props[i];
-      if (Math.abs(x - p.pos.x) < hw + p.hw &&
-          Math.abs(z - p.pos.z) < hd + p.hd) return false;
+      const pfp = this._getRotatedFootprint({ hw: p.hw, hd: p.hd }, p.group.rotation.y);
+      if (Math.abs(x - p.pos.x) < hw + pfp.hw &&
+          Math.abs(z - p.pos.z) < hd + pfp.hd) return `Overlaps ${p.name || 'Prop'}`;
     }
-    return true;
+    return null;
   }
 
   // --- proximity check ------------------------------------------------------
@@ -384,23 +467,26 @@ export class FloorEditor {
 
   _onDown(e) {
     if (e.button !== 0) return;
+    this._handledPointer = false;
 
-    // ---- MOVING: left-click = stamp down ----
+    // ---- MOVING: left-click = stamp or reject ----
     if (this.moveMode && this.selected) {
-      if (this._placementValid) this.confirmMove();
+      e.preventDefault();
+      e.stopPropagation();
+      this._handledPointer = true;
+      this.confirmMove();
       return;
     }
 
     // ---- IDLE: left-click = select, or pick up if already selected ----
     const picked = this._pickObject(e);
     if (picked) {
+      this._handledPointer = true;
       this._clickScreenPos = { x: e.clientX, y: e.clientY };
       if (this.arrangeMode) {
-        // arrange mode: click any item to pick it up immediately
         this.select(picked);
         this.enterMoveMode();
       } else if (this._isSame(picked, this.selected)) {
-        // second click on same item = pick it up
         this.enterMoveMode();
       } else {
         this.select(picked);
@@ -417,12 +503,14 @@ export class FloorEditor {
     if (this.moveMode && this.selected) {
       const pt = this._raycastFloor(e);
       if (!pt) return;
-      const fp = this._getItemFootprint(this.selected);
+      const rawFp = this._getItemFootprint(this.selected);
+      const fp = this._getRotatedFootprint(rawFp, this.selected.obj.rotation.y);
       const W = this.world.W, D = this.world.D;
-      const minX = -W / 2 + fp.hw + 0.5;
-      const maxX =  W / 2 - fp.hw - 0.5;
-      const minZ = -D / 2 + fp.hd + 0.5;
-      const maxZ =  D / 2 - fp.hd - 0.5;
+      const WALL_INSET = 0.05;
+      const minX = -W / 2 + fp.hw + WALL_INSET;
+      const maxX =  W / 2 - fp.hw - WALL_INSET;
+      const minZ = -D / 2 + fp.hd + WALL_INSET;
+      const maxZ =  D / 2 - fp.hd - WALL_INSET;
       const nx = snap(Math.max(minX, Math.min(maxX, pt.x)));
       const nz = snap(Math.max(minZ, Math.min(maxZ, pt.z)));
       this.selected.obj.position.x = nx;
@@ -431,11 +519,8 @@ export class FloorEditor {
       this._updateUsePos(this.selected);
       this._syncSelectRing();
 
-      this._placementValid = this._checkPlacement(nx, nz, this.selected.type, this.selected.index);
-      const vs = this.selected.type === 'table' ? 2.0 : this.selected.type === 'prop' ? Math.max(this.selected.data.hw, this.selected.data.hd) * 1.1 : 1.0;
-      this.validRing.scale.setScalar(vs);
-      this.validRing.position.set(nx, 0.18, nz);
-      this.validRing.userData.ring.material.color.setHex(this._placementValid ? 0x44ff44 : 0xff4444);
+      this._placementReason = this._checkPlacement(nx, nz, this.selected.type, this.selected.index);
+      this._placementValid = this._placementReason === null;
       return;
     }
 
@@ -452,9 +537,10 @@ export class FloorEditor {
         this.selected.obj.rotation.y += ROTATE_STEP * (e.shiftKey ? -1 : 1);
         this._updateUsePos(this.selected);
         this._syncSelectRing();
-        this._placementValid = this._checkPlacement(
+        this._placementReason = this._checkPlacement(
           this.selected.obj.position.x, this.selected.obj.position.z,
           this.selected.type, this.selected.index);
+        this._placementValid = this._placementReason === null;
         this._emitSelect();
       } else if (e.code === 'Escape') {
         e.preventDefault();
@@ -521,17 +607,34 @@ export class FloorEditor {
   update(dt, time) {
     if (!this.enabled) return;
     const t = time || 0;
-    if (this.hoverRing.visible && this.hovered) {
-      this.hoverRing.position.set(this.hovered.obj.position.x, 0.16, this.hovered.obj.position.z);
-      this.hoverRing.userData.ring.material.opacity = 0.35 + Math.sin(t * 5) * 0.15;
+    // hover: gentle breathe
+    if (this.hovered && this._glowMeshes.length) {
+      this._glowT += dt;
+      const wave = 0.5 + Math.sin(this._glowT * 4) * 0.5; // 0→1 smooth
+      this._applyTint(this._glowMeshes, 0x88bbff, 0.12 + wave * 0.08, 0.06 + wave * 0.06);
     }
-    if (this.selectRing.visible) {
-      this._syncSelectRing();
-      this.selectRing.userData.ring.material.opacity = 0.6 + Math.sin(t * 4) * 0.2;
-      this.selectRing.userData.arrows.rotation.y = t * 0.5;
+    // selected: steady subtle pulse
+    if (this.selected && this._selectGlowMeshes.length && !this.moveMode) {
+      const wave = 0.5 + Math.sin(t * 3) * 0.5;
+      this._applyTint(this._selectGlowMeshes, 0x88bbff, 0.15 + wave * 0.1, 0.08 + wave * 0.07);
     }
-    if (this.validRing.visible) {
-      this.validRing.userData.ring.material.opacity = 0.5 + Math.sin(t * 6) * 0.2;
+    // moving: slightly stronger breathe
+    if (this.moveMode && this._moveGlowMeshes.length) {
+      const wave = 0.5 + Math.sin(t * 4.5) * 0.5;
+      this._applyTint(this._moveGlowMeshes, 0x66aaff, 0.18 + wave * 0.12, 0.1 + wave * 0.08);
+    }
+    // placed: green flash that fades out
+    if (this._confirmGlowTimer >= 0 && this._confirmGlowMeshes.length) {
+      this._confirmGlowTimer += dt;
+      const dur = 0.5;
+      const p = Math.min(this._confirmGlowTimer / dur, 1);
+      const fade = (1 - p) * (1 - p);
+      this._applyTint(this._confirmGlowMeshes, 0x66ff99, fade * 0.25, fade * 0.15);
+      if (p >= 1) {
+        this._restoreMeshes(this._confirmGlowMeshes);
+        this._confirmGlowMeshes = [];
+        this._confirmGlowTimer = -1;
+      }
     }
     // project tooltip position during move mode
     if (this.moveMode && this.selected && this.onMoveUpdate) {
@@ -541,7 +644,7 @@ export class FloorEditor {
         this.selected.obj.position.z
       );
       const sp = this._projectToScreen(topPos);
-      this.onMoveUpdate(sp.x, sp.y, this._placementValid);
+      this.onMoveUpdate(sp.x, sp.y, this._placementValid, this._placementReason);
     }
   }
 
@@ -596,9 +699,10 @@ export class FloorEditor {
     this._updateUsePos(this.selected);
     this._syncSelectRing();
     if (this.moveMode) {
-      this._placementValid = this._checkPlacement(
+      this._placementReason = this._checkPlacement(
         this.selected.obj.position.x, this.selected.obj.position.z,
         this.selected.type, this.selected.index);
+      this._placementValid = this._placementReason === null;
     } else if (this.onChange) {
       this.onChange();
     }

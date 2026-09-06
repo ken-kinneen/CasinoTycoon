@@ -318,3 +318,9 @@ export function animatePerson(g, dt, { walking, walkT, drunk = false }) {
     g.rotation.z += (0 - g.rotation.z) * blend;
   }
 }
+
+/** Set a character's gaze target (no-op for boxy characters). */
+export function setGaze() {}
+
+/** Change a character's mood (no-op for boxy characters). */
+export function setMood() {}
