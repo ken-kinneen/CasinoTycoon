@@ -117,9 +117,25 @@ const buyResults = await page.evaluate(() => {
   const { game } = window.__casino;
   const before = { ...game.stats };
   const r = [game.buyCasinoUpgrade('d_slots1'), game.buyCasinoUpgrade('d_neon'), game.buyCasinoUpgrade('d_gas'), game.buyCasinoUpgrade('d_windows'), game.buyAd('ad_bus'), game.buySkill('poker'), game.buySkill('poker'), game.buySkill('tongue'), game.buyAward('aw_toilet')];
+  // Floor-driven: place inventory machines so they count
+  const cid = game.casinoDef.id;
+  if (!game.s.floorLayouts[cid]) game.s.floorLayouts[cid] = { machines: [], tables: [], props: [] };
+  const inv = game.machineInventoryFor();
+  let i = 0;
+  while (inv.length) {
+    const type = inv.shift();
+    const entry = { x: (i % 3) * 1.5 - 1.5, z: Math.floor(i / 3) * 1.5, ry: 0 };
+    if (type === 'machine') game.s.floorLayouts[cid].machines.push(entry);
+    else game.s.floorLayouts[cid].tables.push(entry);
+    i++;
+  }
+  game.recompute();
+  // Trigger world rebuild so meshes match the new layout
+  window.dispatchEvent(new CustomEvent('casino-rebuild'));
   return { r, before: { machines: before.machines, stay: before.stayTime, heat: before.heat }, after: { machines: game.stats.machines, stay: game.stats.stayTime, heat: game.stats.heat }, money: game.s.money };
 });
 console.log('purchases:', JSON.stringify(buyResults));
+await page.evaluate(() => { if (window.__casino.rebuildWorld) window.__casino.rebuildWorld(); });
 await page.keyboard.press('KeyU'); await frames(3);
 await page.keyboard.press('KeyU'); await frames(3);
 await page.click('[data-tab="skills"]'); await page.waitForTimeout(300);
@@ -141,7 +157,7 @@ await page.evaluate(() => { const { game } = window.__casino; game.s.money = 5e6
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}/17-vegas-win.png` });
 await page.click('#result-close').catch(() => {});
-await page.evaluate(() => { const { game, customers, player, world } = window.__casino; for (const u of ['p_slots1', 'p_sky', 'p_volcano', 'p_tower', 'p_tables']) game.buyCasinoUpgrade(u); for (const a of ['aw_tiger', 'aw_fountain', 'aw_statue', 'aw_lights']) game.buyAward(a); customers.queue(30); });
+await page.evaluate(() => { const { game, customers, player, world, rebuildWorld } = window.__casino; for (const u of ['p_slots1', 'p_sky', 'p_volcano', 'p_tower', 'p_tables']) game.buyCasinoUpgrade(u); const cid = game.casinoDef.id; if (!game.s.floorLayouts[cid]) game.s.floorLayouts[cid] = { machines: [], tables: [], props: [] }; const inv = game.machineInventoryFor(); let i = 0; while (inv.length) { const type = inv.shift(); const entry = { x: (i % 4) * 1.5 - 2, z: Math.floor(i / 4) * 1.5 - 2, ry: 0 }; if (type === 'machine') game.s.floorLayouts[cid].machines.push(entry); else game.s.floorLayouts[cid].tables.push(entry); i++; } game.recompute(); rebuildWorld(); for (const a of ['aw_tiger', 'aw_fountain', 'aw_statue', 'aw_lights']) game.buyAward(a); customers.queue(30); });
 await page.waitForTimeout(1000);
 await page.evaluate(() => { const { player, world } = window.__casino; player.camDist = 13; player.camPitch = 0.8; player.teleport(0, world.D / 2 - 12); });
 await page.evaluate(() => window.__casino.step(60)); await page.waitForTimeout(1500);

@@ -51,12 +51,15 @@
         </div>
       </div>
 
-      <div class="sb-nav">
-        <button class="sb-nav-btn" id="btn-ledger"><span class="ico-slot" id="ico-ledger"></span><span>Upgrades</span></button>
-        <button class="sb-nav-btn sb-action-arrange" id="btn-arrange"><span class="ico-slot" id="ico-hot-arrange"></span><span>Arrange Floor</span></button>
-        <button class="sb-nav-btn" id="btn-achievements"><span class="ico-slot" data-ico="trophy"></span><span>Achievements</span></button>
-        <button class="sb-nav-btn" id="btn-help"><span class="ico-slot" id="ico-help"></span><span>Help</span></button>
-        <button class="sb-nav-btn" id="btn-settings"><span class="ico-slot" id="ico-settings"></span><span>Settings</span></button>
+      <div class="sb-section">
+        <div class="sb-label">SHORTCUTS</div>
+        <div class="sb-actions">
+          <div class="sb-action" id="btn-ledger"><span class="ico-slot" id="ico-ledger"></span><span class="sb-action-name">Shop</span><kbd>U</kbd></div>
+          <div class="sb-action sb-action-arrange" id="btn-arrange"><span class="ico-slot" id="ico-hot-arrange"></span><span class="sb-action-name">Build</span><kbd>G</kbd></div>
+          <div class="sb-action" id="btn-achievements"><span class="ico-slot" data-ico="trophy"></span><span class="sb-action-name">Achievements</span><kbd>J</kbd></div>
+          <div class="sb-action" id="btn-help"><span class="ico-slot" id="ico-help"></span><span class="sb-action-name">Help</span><kbd>H</kbd></div>
+          <div class="sb-action" id="btn-settings"><span class="ico-slot" id="ico-settings"></span><span class="sb-action-name">Settings</span><kbd>N</kbd></div>
+        </div>
       </div>
     </div>
 
@@ -68,7 +71,7 @@
         <div class="pp-title" id="portrait-title">Proprietor</div>
       </div>
       <div class="pp-milestones" id="pp-milestones"></div>
-      <button class="pp-stats-btn" id="btn-stats"><span class="ico-slot" id="ico-stats"></span> All Stats</button>
+      <button class="pp-stats-btn" id="btn-wardrobe"><span class="ico-slot" data-ico="person"></span> Customize</button>
       <div class="pp-bubble hidden" id="bubble"><div class="pp-bubble-tail"></div><span id="bubble-text"></span></div>
     </div>
 
@@ -79,22 +82,59 @@
     <div class="hud-bottom">
       <div id="hud-prompt" class="prompt hidden"><kbd>F</kbd><span id="hud-prompt-text"></span></div>
     </div>
+
+    <!-- Build inventory for placeable achievement props -->
+    <div id="build-inventory" class="build-inv hidden">
+      <div class="build-inv-head">
+        <span class="build-inv-title">Placeables</span>
+        <span class="build-inv-hint">Drag to place · click placed items to remove</span>
+        <button class="build-inv-close" id="build-inv-close" title="Close">×</button>
+      </div>
+      <div class="build-inv-items" id="build-inv-items"></div>
+    </div>
   </div>
 
-  <!-- ================= Stats panel ================= -->
-  <div id="stats-panel" class="panel frame hidden">
-    <div class="panel-title">CASINO STATISTICS <span class="dim" id="stats-casino"></span></div>
-    <div class="stats-grid" id="stats-casino-grid"></div>
-    <div class="panel-title" id="stats-player-name">VICTOR VANE</div>
-    <div class="stats-grid" id="stats-player-grid"></div>
-    <div class="stats-life" id="stats-life"></div>
+  <!-- ================= Wardrobe / Customize ================= -->
+  <div id="wardrobe-panel" class="modal hidden">
+    <div class="wd-box">
+      <aside class="wd-rail">
+        <div class="wd-rail-top">
+          <div class="wd-title">WARDROBE</div>
+          <div class="wd-subtitle">Dress to oppress.</div>
+        </div>
+        <canvas id="wd-player-model" width="270" height="340"></canvas>
+        <div class="wd-player-name" id="wd-player-name">VICTOR VANE</div>
+        <div class="wd-rail-stats" id="wd-rail-stats"></div>
+        <div class="wd-nav">
+          <button class="wd-tab active" data-wd-tab="wardrobe">Cosmetics</button>
+          <button class="wd-tab" data-wd-tab="stats">Stats</button>
+        </div>
+      </aside>
+      <main class="wd-main">
+        <div class="wd-main-head">
+          <div class="wd-main-heading" id="wd-heading">Cosmetics</div>
+          <div class="wd-main-intro" id="wd-intro">One item per slot. Unlock more by levelling skills.</div>
+          <button class="close-btn" id="wd-close"><span class="ico-slot" data-ico="close"></span></button>
+        </div>
+        <div class="wd-main-body" id="wd-body">
+          <div class="wd-tab-content" id="wd-tab-wardrobe"></div>
+          <div class="wd-tab-content hidden" id="wd-tab-stats">
+            <div class="panel-title">CASINO STATISTICS <span class="dim" id="stats-casino"></span></div>
+            <div class="stats-grid" id="stats-casino-grid"></div>
+            <div class="panel-title" id="stats-player-name">VICTOR VANE</div>
+            <div class="stats-grid" id="stats-player-grid"></div>
+            <div class="stats-life" id="stats-life"></div>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 
   <!-- ================= Ledger ================= -->
   <div id="ledger" class="modal hidden">
     <div class="ledger-box">
       <aside class="ledger-rail">
-        <div class="ledger-brand"><div class="ledger-title">UPGRADES</div><div class="ledger-tag">Every dollar is a decision.<br>Every decision is a crime.</div></div>
+        <div class="ledger-brand"><div class="ledger-title">SHOP</div><div class="ledger-tag">Every dollar is a decision.<br>Every decision is a crime.</div></div>
         <div class="ledger-money-box"><div class="money-label">IN THE SAFE</div><div class="money" id="ledger-money">$200</div></div>
         <nav class="ledger-tabs" id="ledger-tabs">
           <button data-tab="casino" class="active"><span class="ico-slot" data-ico="building"></span>Casino Upgrades</button>
@@ -113,13 +153,18 @@
 
   <!-- ================= Achievements ================= -->
   <div id="achievements" class="modal hidden">
-    <div class="ach-box">
+    <div class="ach-box wide">
       <div class="ach-header">
-        <div class="ach-title-row">
+        <div class="ach-header-left">
           <div class="ach-title">ACHIEVEMENTS</div>
           <div class="ach-progress"><span id="ach-screen-count">0</span> / <span id="ach-screen-total">0</span></div>
         </div>
-        <div class="ach-subtitle">What you've done. What remains. Some things are hidden until earned.</div>
+        <div class="ach-filters">
+          <button class="ach-filter active" data-filter="all">All</button>
+          <button class="ach-filter" data-filter="cosmetic">Cosmetics</button>
+          <button class="ach-filter" data-filter="placeable">Placeables</button>
+          <button class="ach-filter" data-filter="trophy">Trophies</button>
+        </div>
         <button class="close-btn" id="ach-close"><span class="ico-slot" data-ico="close"></span></button>
       </div>
       <div class="ach-body" id="ach-body"></div>
@@ -151,12 +196,12 @@
         <h1 class="logo"><span class="logo-top">CASINO</span><span class="logo-main">TYCOON</span></h1>
         <div class="logo-sub neon-flicker">CORRUPTED CASINO OWNER</div>
         <p class="story">You are <b id="intro-name">Victor Vane</b>. You own <b id="intro-casino">The Lucky Duck</b>, a strip-mall casino wedged between a pawn shop and a bail bondsman. It smells like carpet cleaner and regret.</p>
-        <p class="story">You have <b>$200</b>, four slot machines, and a dream: a cathedral of neon on the Las Vegas strip. Between here and there are a lot of other people's pockets.</p>
+        <p class="story">You have <b>$200</b>, an empty building, and a dream: a cathedral of neon on the Las Vegas strip. Between here and there are a lot of other people's pockets.</p>
         <div class="title-actions">
           <button class="btn-gold big" id="intro-start">OPEN THE DOORS</button>
           <button class="btn-ghost" id="intro-reset">Wipe the books</button>
         </div>
-        <div class="title-controls"><kbd>WASD</kbd> walk <kbd>F</kbd> interact <kbd>U</kbd> upgrades <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> activities</div>
+        <div class="title-controls"><kbd>WASD</kbd> walk <kbd>F</kbd> interact <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> activities <kbd>U</kbd> shop <kbd>G</kbd> build <kbd>J</kbd> achievements</div>
       </div>
     </div>
   </div>
@@ -167,12 +212,13 @@
       <div class="receipt-head"><span class="receipt-title">How to be terrible</span></div>
       <div class="help-grid">
         <div><b>Walk the floor.</b> <kbd>WASD</kbd> or arrows. Drag the mouse to orbit, scroll to zoom, <kbd>Q</kbd> spins the camera.</div>
-        <div><b>Work.</b> Walk up and press <kbd>F</kbd>: the street (ads), the safe (vault crack), the desk (upgrades). Click a table to deal. <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> jump straight there.</div>
+        <div><b>Work.</b> Walk up and press <kbd>F</kbd>: the street (ads), the safe (vault crack), the desk (shop). Click a table to deal. <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> jump straight there.</div>
         <div><b>Hoppers.</b> Guests spend into their machine's hopper. It isn't yours until you haul it to the safe. A full hopper stops earning.</div>
         <div><b>Heat.</b> How much the authorities notice you. Inspectors drop by; the envelope costs money. Bribes bring heat down.</div>
         <div><b>Guests.</b> Drunks have wide margins at the table. Sharps spend less and are hard to beat. Whales bet big and love prestige.</div>
         <div><b>The dream.</b> Buy the next casino from the Expansion tab. Skills and ad campaigns follow you. Vegas is the goal.</div>
-        <div><b>Arrange.</b> Press <kbd>G</kbd> or click <b>Arrange Floor</b> in the sidebar, then click any machine or table — it follows your cursor. Click to place, <kbd>R</kbd> to rotate, <kbd>Esc</kbd> to cancel. Green = valid, red = blocked.</div>
+        <div><b>Build.</b> Press <kbd>G</kbd> or click <b>Build</b> in the sidebar, then click any machine or table — it follows your cursor. Click to place, <kbd>R</kbd> to rotate, <kbd>Esc</kbd> to cancel. Green = valid, red = blocked.</div>
+        <div><b>Shortcuts.</b> <kbd>U</kbd> Shop · <kbd>G</kbd> Build · <kbd>J</kbd> Achievements · <kbd>H</kbd> Help · <kbd>N</kbd> Settings · <kbd>Tab</kbd> Customize · <kbd>M</kbd> Mute</div>
       </div>
       <button class="btn-gold" id="help-close">Understood</button>
     </div>
@@ -192,6 +238,10 @@
 
   <!-- ================= Move Mode Tooltip (follows object) ================= -->
   <div id="move-tooltip" class="hidden"><kbd>R</kbd> <span class="sep">·</span> rotate <span class="sep">·</span> click to place <span class="sep">·</span> <kbd>Esc</kbd> <span class="sep">·</span> cancel</div>
+
+  <!-- ================= Dev Panel Toggle + Panel ================= -->
+  <button id="dev-toggle" class="dev-toggle" title="Dev Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></button>
+  <div id="dev-panel" class="dev-panel hidden"></div>
 
   <!-- ================= Perf Stats ================= -->
   <div id="perf-stats" class="hidden"></div>
@@ -220,76 +270,6 @@
           <div class="setting-control setting-vol-wrap">
             <input type="range" min="0" max="100" id="settings-vol" class="setting-slider" />
             <span class="setting-vol-num" id="settings-vol-num">30%</span>
-          </div>
-        </div>
-      </div>
-      <div class="settings-divider"></div>
-      <div class="settings-dev-head">Lighting</div>
-      <div class="settings-grid">
-        <div class="setting-row">
-          <label class="setting-label" for="settings-bloom">Bloom</label>
-          <div class="setting-control setting-vol-wrap">
-            <input type="range" min="0" max="100" id="settings-bloom" class="setting-slider" />
-            <span class="setting-vol-num" id="settings-bloom-num">35%</span>
-            <button class="setting-reset" data-key="bloom" data-default="20" title="Reset to 20%">20</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="settings-exposure">Exposure</label>
-          <div class="setting-control setting-vol-wrap">
-            <input type="range" min="0" max="100" id="settings-exposure" class="setting-slider" />
-            <span class="setting-vol-num" id="settings-exposure-num">85%</span>
-            <button class="setting-reset" data-key="exposure" data-default="85" title="Reset to 85%">85</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="settings-grain">Grain</label>
-          <div class="setting-control setting-vol-wrap">
-            <input type="range" min="0" max="100" id="settings-grain" class="setting-slider" />
-            <span class="setting-vol-num" id="settings-grain-num">12%</span>
-            <button class="setting-reset" data-key="grain" data-default="12" title="Reset to 12%">12</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="settings-vignette">Vignette</label>
-          <div class="setting-control setting-vol-wrap">
-            <input type="range" min="0" max="100" id="settings-vignette" class="setting-slider" />
-            <span class="setting-vol-num" id="settings-vignette-num">45%</span>
-            <button class="setting-reset" data-key="vignette" data-default="45" title="Reset to 45%">45</button>
-          </div>
-        </div>
-      </div>
-      <div class="settings-divider"></div>
-      <div class="settings-dev-head">Dev Settings</div>
-      <div class="settings-dev" id="settings-dev">
-        <div class="setting-row">
-          <label class="setting-label">God Mode</label>
-          <div class="setting-control">
-            <button class="setting-toggle" id="settings-god"><span id="settings-god-label">OFF</span></button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="settings-level">Casino</label>
-          <select class="setting-select" id="settings-level">
-            <option value="0">1 · The Lucky Duck</option>
-            <option value="1">2 · The Golden Rat</option>
-            <option value="2">3 · Palazzo Diablo</option>
-          </select>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label" for="settings-money">Money</label>
-          <input class="setting-input" type="number" id="settings-money" min="0" step="1000" />
-        </div>
-        <div class="setting-row">
-          <label class="setting-label">Perf Stats</label>
-          <div class="setting-control">
-            <button class="setting-toggle" id="settings-perf"><span id="settings-perf-label">OFF</span></button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <label class="setting-label">Uncap FPS</label>
-          <div class="setting-control">
-            <button class="setting-toggle" id="settings-uncap"><span id="settings-uncap-label">OFF</span></button>
           </div>
         </div>
       </div>

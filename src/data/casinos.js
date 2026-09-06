@@ -1,6 +1,6 @@
 // The three casinos. Each is a full floor layout + base stats.
-// Sizes are in world units (metres-ish). Machines/tables are the base counts;
-// upgrades add more and the world builder places them in rows.
+// Sizes are in world units (metres-ish). Machines and tables start at 0 —
+// everything is acquired through shop upgrades.
 
 export const CUSTOMER_TYPES = {
   pensioner:  { name: 'Pensioners',    icon: '👴', spend: 0.6, stay: 1.4, sharpness: 0.3, desc: 'Slow and steady. Low spend, long stays.' },
@@ -31,9 +31,9 @@ export const CASINOS = [
     customers: ['pensioner', 'tourist', 'regular'],
     base: {
       capacity: 8,
-      machines: 4,
-      tables: 1,
-      trafficPerMin: 0.6,
+      machines: 0,
+      tables: 0,
+      trafficPerMin: 0,
       spendPerMin: 40,
       stayTime: 60,
       sharpness: 0.6,
@@ -59,9 +59,9 @@ export const CASINOS = [
     customers: ['pensioner', 'tourist', 'regular', 'bachelor', 'businesser'],
     base: {
       capacity: 24,
-      machines: 12,
-      tables: 2,
-      trafficPerMin: 2.2,
+      machines: 0,
+      tables: 0,
+      trafficPerMin: 0,
       spendPerMin: 90,
       stayTime: 75,
       sharpness: 0.6,
@@ -87,9 +87,9 @@ export const CASINOS = [
     customers: ['pensioner', 'tourist', 'regular', 'bachelor', 'businesser', 'high_roller', 'whale'],
     base: {
       capacity: 60,
-      machines: 30,
-      tables: 4,
-      trafficPerMin: 6,
+      machines: 0,
+      tables: 0,
+      trafficPerMin: 0,
       spendPerMin: 220,
       stayTime: 90,
       sharpness: 0.6,

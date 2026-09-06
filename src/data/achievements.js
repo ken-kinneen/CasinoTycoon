@@ -3,11 +3,21 @@
 // returning true when the condition is met.
 //
 // Rewards:
-//   `reward`  — cash bonus paid on claim
-//   `item`    — cosmetic model key granted on claim (placed in the world)
-//   `effects` — stat effects applied permanently once claimed
+//   `reward`    — cash bonus paid on claim
+//   `item`      — placeable model key granted on claim (floor prop)
+//   `cosmetic`  — wearable cosmetic key granted on claim (wardrobe slot)
+//   `effects`   — stat effects applied permanently once claimed
 //
 // `hidden` achievements don't show name/hint until unlocked.
+// `requires` — id of another achievement that must be claimed first;
+//   until then this one is shown as secret (so players know something is there).
+//
+// `progress(s, stats)` returns { current, target, fmt? } for the UI.
+//   `fmt` is optional: 'money' for dollar formatting, 'time' for mm:ss.
+
+const totalUpgrades = s => Object.values(s.casinoUpgrades).reduce((a, arr) => a + arr.length, 0);
+const bestSkill = s => Math.max(...Object.values(s.skills));
+const allSkillsMin = s => Math.min(...Object.values(s.skills));
 
 export const ACHIEVEMENTS = [
   // ---- Early game: teach the core loop ----
@@ -16,8 +26,10 @@ export const ACHIEVEMENTS = [
     name: 'First Hustle',
     hint: 'Slip a card to someone on the sidewalk',
     icon: 'card',
+    preview: 'cardstock',
     reward: 50,
     check: s => s.lifetimeCustomers >= 1,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 1), target: 1 }),
   },
   {
     id: 'first_vault',
@@ -25,23 +37,29 @@ export const ACHIEVEMENTS = [
     hint: 'Vault crack to bank your hopper cash',
     icon: 'safe',
     reward: 100,
+    item: 'planter',
     check: s => s.lifetimeEarned >= 50,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 50), target: 50, fmt: 'money' }),
   },
   {
     id: 'first_deal',
     name: 'House Rules',
     hint: 'Deal a hand at the table',
     icon: 'cards',
+    preview: 'tables',
     reward: 75,
     check: (s, st) => st.tables >= 1 && s.lifetimeEarned >= 200,
+    progress: (s, st) => ({ current: Math.min(s.lifetimeEarned, 200), target: 200, fmt: 'money' }),
   },
   {
     id: 'first_upgrade',
     name: 'First Improvement',
-    hint: 'Buy your first upgrade from the Upgrades screen',
+    hint: 'Buy your first upgrade from the Shop',
     icon: 'ledger',
+    preview: 'slotwrench',
     reward: 100,
     check: s => s.casinoUpgrades.duck.length >= 1 || s.adUpgrades.length >= 1,
+    progress: s => ({ current: Math.min(s.casinoUpgrades.duck.length + s.adUpgrades.length, 1), target: 1 }),
   },
 
   // ---- Money milestones ----
@@ -51,7 +69,9 @@ export const ACHIEVEMENTS = [
     hint: 'Earn $1,000 lifetime',
     icon: 'dollar',
     reward: 150,
+    item: 'velvetrope',
     check: s => s.lifetimeEarned >= 1000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 1000), target: 1000, fmt: 'money' }),
   },
   {
     id: 'earn_5k',
@@ -61,6 +81,17 @@ export const ACHIEVEMENTS = [
     reward: 300,
     item: 'toilet',
     check: s => s.lifetimeEarned >= 5000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 5000), target: 5000, fmt: 'money' }),
+  },
+  {
+    id: 'high_roller_shades',
+    name: 'High Roller Shades',
+    hint: 'Earn $10,000 lifetime',
+    icon: 'dollar',
+    reward: 400,
+    cosmetic: 'ach_shades',
+    check: s => s.lifetimeEarned >= 10000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 10000), target: 10000, fmt: 'money' }),
   },
   {
     id: 'earn_25k',
@@ -70,6 +101,7 @@ export const ACHIEVEMENTS = [
     reward: 500,
     item: 'selfstatue',
     check: s => s.lifetimeEarned >= 25000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 25000), target: 25000, fmt: 'money' }),
   },
   {
     id: 'earn_100k',
@@ -79,6 +111,18 @@ export const ACHIEVEMENTS = [
     reward: 2000,
     item: 'namelights',
     check: s => s.lifetimeEarned >= 100000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 100000), target: 100000, fmt: 'money' }),
+  },
+  {
+    id: 'diamond_eyes',
+    name: 'Diamond Eyes',
+    hint: 'Earn $250,000 lifetime',
+    icon: 'dollar',
+    reward: 5000,
+    cosmetic: 'ach_diamond_shades',
+    requires: 'high_roller_shades',
+    check: s => s.lifetimeEarned >= 250000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 250000), target: 250000, fmt: 'money' }),
   },
   {
     id: 'earn_500k',
@@ -88,6 +132,7 @@ export const ACHIEVEMENTS = [
     reward: 10000,
     item: 'fountain',
     check: s => s.lifetimeEarned >= 500000,
+    progress: s => ({ current: Math.min(s.lifetimeEarned, 500000), target: 500000, fmt: 'money' }),
   },
 
   // ---- Guest milestones ----
@@ -97,7 +142,9 @@ export const ACHIEVEMENTS = [
     hint: 'Fleece 10 guests',
     icon: 'people',
     reward: 150,
+    item: 'ornateurn',
     check: s => s.lifetimeCustomers >= 10,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 10), target: 10 }),
   },
   {
     id: 'guests_50',
@@ -105,7 +152,19 @@ export const ACHIEVEMENTS = [
     hint: 'Fleece 50 guests',
     icon: 'people',
     reward: 500,
+    item: 'palmtree',
     check: s => s.lifetimeCustomers >= 50,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 50), target: 50 }),
+  },
+  {
+    id: 'street_cred',
+    name: 'Street Cred',
+    hint: 'Fleece 100 guests',
+    icon: 'people',
+    reward: 800,
+    cosmetic: 'ach_street_chain',
+    check: s => s.lifetimeCustomers >= 100,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 100), target: 100 }),
   },
   {
     id: 'guests_200',
@@ -115,6 +174,7 @@ export const ACHIEVEMENTS = [
     reward: 2000,
     item: 'tiger',
     check: s => s.lifetimeCustomers >= 200,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 200), target: 200 }),
   },
   {
     id: 'guests_1000',
@@ -122,8 +182,10 @@ export const ACHIEVEMENTS = [
     hint: 'Fleece 1,000 guests',
     icon: 'people',
     reward: 5000,
+    item: 'aquarium',
     hidden: true,
     check: s => s.lifetimeCustomers >= 1000,
+    progress: s => ({ current: Math.min(s.lifetimeCustomers, 1000), target: 1000 }),
   },
 
   // ---- Upgrade depth ----
@@ -132,11 +194,10 @@ export const ACHIEVEMENTS = [
     name: 'Renovating',
     hint: 'Own 5 casino upgrades',
     icon: 'building',
+    preview: 'neon',
     reward: 250,
-    check: s => {
-      const total = Object.values(s.casinoUpgrades).reduce((a, arr) => a + arr.length, 0);
-      return total >= 5;
-    },
+    check: s => totalUpgrades(s) >= 5,
+    progress: s => ({ current: Math.min(totalUpgrades(s), 5), target: 5 }),
   },
   {
     id: 'upgrades_15',
@@ -145,18 +206,18 @@ export const ACHIEVEMENTS = [
     icon: 'building',
     reward: 1000,
     hidden: true,
-    check: s => {
-      const total = Object.values(s.casinoUpgrades).reduce((a, arr) => a + arr.length, 0);
-      return total >= 15;
-    },
+    check: s => totalUpgrades(s) >= 15,
+    progress: s => ({ current: Math.min(totalUpgrades(s), 15), target: 15 }),
   },
   {
     id: 'ads_5',
     name: 'Marketing Genius',
     hint: 'Buy 5 advertising upgrades',
     icon: 'billboard',
+    preview: 'billboard',
     reward: 400,
     check: s => s.adUpgrades.length >= 5,
+    progress: s => ({ current: Math.min(s.adUpgrades.length, 5), target: 5 }),
   },
   {
     id: 'ads_all',
@@ -166,14 +227,17 @@ export const ACHIEVEMENTS = [
     reward: 5000,
     hidden: true,
     check: s => s.adUpgrades.length >= 15,
+    progress: s => ({ current: Math.min(s.adUpgrades.length, 15), target: 15 }),
   },
   {
     id: 'skill_any_3',
     name: 'Trained Up',
     hint: 'Reach level 3 in any skill',
     icon: 'person',
+    preview: 'skill_sleight',
     reward: 500,
     check: s => Object.values(s.skills).some(v => v >= 3),
+    progress: s => ({ current: Math.min(bestSkill(s), 3), target: 3 }),
   },
   {
     id: 'skill_any_5',
@@ -181,7 +245,9 @@ export const ACHIEVEMENTS = [
     hint: 'Max out any skill to level 5',
     icon: 'crown',
     reward: 5000,
+    item: 'megaphone',
     check: s => Object.values(s.skills).some(v => v >= 5),
+    progress: s => ({ current: Math.min(bestSkill(s), 5), target: 5 }),
   },
   {
     id: 'skill_all_5',
@@ -191,6 +257,7 @@ export const ACHIEVEMENTS = [
     reward: 25000,
     hidden: true,
     check: s => Object.values(s.skills).every(v => v >= 5),
+    progress: s => ({ current: Object.values(s.skills).reduce((a, v) => a + Math.min(v, 5), 0), target: 25 }),
   },
 
   // ---- Expansion ----
@@ -200,7 +267,9 @@ export const ACHIEVEMENTS = [
     hint: 'Buy your second casino',
     icon: 'building',
     reward: 2000,
+    item: 'fireplace',
     check: s => s.ownedCasinos.includes(1),
+    progress: s => ({ current: s.ownedCasinos.includes(1) ? 1 : 0, target: 1 }),
   },
   {
     id: 'casino_3',
@@ -208,7 +277,19 @@ export const ACHIEVEMENTS = [
     hint: 'Buy the Palazzo Diablo',
     icon: 'tower',
     reward: 10000,
+    item: 'chandelier',
     check: s => s.ownedCasinos.includes(2),
+    progress: s => ({ current: s.ownedCasinos.includes(2) ? 1 : 0, target: 1 }),
+  },
+  {
+    id: 'empire_builder',
+    name: 'Empire Builder',
+    hint: 'Own all three casinos',
+    icon: 'crown',
+    reward: 8000,
+    cosmetic: 'ach_crown',
+    check: s => s.ownedCasinos.includes(0) && s.ownedCasinos.includes(1) && s.ownedCasinos.includes(2),
+    progress: s => ({ current: (s.ownedCasinos || []).length, target: 3 }),
   },
 
   // ---- Cosmetics from achievements ----
@@ -217,8 +298,10 @@ export const ACHIEVEMENTS = [
     name: 'Trophy Case',
     hint: 'Earn your first cosmetic item from an achievement',
     icon: 'star',
+    preview: 'trophy',
     reward: 300,
     check: s => (s.achItems || []).length >= 1,
+    progress: s => ({ current: Math.min((s.achItems || []).length, 1), target: 1 }),
   },
 
   // ---- Time on the floor ----
@@ -227,25 +310,41 @@ export const ACHIEVEMENTS = [
     name: 'Settling In',
     hint: 'Spend 10 minutes on the floor',
     icon: 'clock',
+    preview: 'noclocks',
     reward: 100,
     check: s => s.playTime >= 600,
+    progress: s => ({ current: Math.min(s.playTime, 600), target: 600, fmt: 'time' }),
+  },
+  {
+    id: 'floor_boss',
+    name: 'Floor Boss',
+    hint: 'Spend 20 minutes on the floor',
+    icon: 'clock',
+    reward: 300,
+    cosmetic: 'ach_boss_cigar',
+    check: s => s.playTime >= 1200,
+    progress: s => ({ current: Math.min(s.playTime, 1200), target: 1200, fmt: 'time' }),
   },
   {
     id: 'time_30',
     name: 'Marathon Shift',
     hint: 'Spend 30 minutes on the floor',
     icon: 'clock',
+    preview: 'machines',
     reward: 500,
     check: s => s.playTime >= 1800,
+    progress: s => ({ current: Math.min(s.playTime, 1800), target: 1800, fmt: 'time' }),
   },
   {
     id: 'time_60',
     name: 'Night Owl',
     hint: 'Spend an hour on the floor',
     icon: 'clock',
+    preview: 'noclocks',
     reward: 2000,
     hidden: true,
     check: s => s.playTime >= 3600,
+    progress: s => ({ current: Math.min(s.playTime, 3600), target: 3600, fmt: 'time' }),
   },
 
   // ---- Hidden / secret ----
@@ -257,6 +356,7 @@ export const ACHIEVEMENTS = [
     reward: 1000,
     hidden: true,
     check: s => s.money >= 50000,
+    progress: s => ({ current: Math.min(s.money, 50000), target: 50000, fmt: 'money' }),
   },
   {
     id: 'all_casinos_upgraded',
@@ -266,8 +366,9 @@ export const ACHIEVEMENTS = [
     reward: 50000,
     hidden: true,
     check: s => {
-      const counts = { duck: 15, rat: 15, diablo: 15 };
+      const counts = { duck: 18, rat: 18, diablo: 18 };
       return Object.entries(counts).every(([k, n]) => (s.casinoUpgrades[k] || []).length >= n);
     },
+    progress: s => ({ current: Math.min(totalUpgrades(s), 54), target: 54 }),
   },
 ];

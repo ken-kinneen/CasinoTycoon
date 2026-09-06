@@ -77,16 +77,30 @@ export function makeCustomer(type = 'regular') {
   return g;
 }
 
-/** The owner character. `skills` = {sleight, back, poker, tongue, feet} levels. */
-export function makeOwner(skills = {}) {
+/**
+ * The owner character.
+ * `skills` = {sleight, back, poker, tongue, feet} — raw skill levels (for stat effects).
+ * `wardrobe` = { hat: 'poker_5', glasses: 'poker_2', ... } — what's equipped per slot.
+ *   If omitted, all cosmetics at or below the skill level are shown (legacy behaviour).
+ */
+export function makeOwner(skills = {}, wardrobe) {
+  const has = (key) => {
+    if (!wardrobe) {
+      const [src, lvl] = key.split('_');
+      return (skills[src] || 0) >= parseInt(lvl, 10);
+    }
+    return Object.values(wardrobe).includes(key);
+  };
   const g = new THREE.Group();
   const skin = '#e0ac69';
   const skinMat = mat(0xe0ac69, { roughness: 0.65, flatShading: false });
-  const suitTex = T.pinstripeTexture(skills.tongue >= 5 ? '#5a0a2a' : '#1c1030');
+  const hasFurCoat = has('tongue_5');
+  const suitTex = T.pinstripeTexture(hasFurCoat ? '#5a0a2a' : '#1c1030');
   const suit = texMat(suitTex, { roughness: 0.55 });
-  const suitPlain = mat(skills.tongue >= 5 ? 0x5a0a2a : 0x1c1030, { roughness: 0.55 });
+  const suitPlain = mat(hasFurCoat ? 0x5a0a2a : 0x1c1030, { roughness: 0.55 });
   const gold = GOLD();
-  const shoulders = 0.74 + (skills.back || 0) * 0.04;
+  const hasBroadShoulders = has('back_2');
+  const shoulders = 0.74 + (hasBroadShoulders ? (skills.back || 0) * 0.04 : 0);
 
   // torso + long coat
   const torso = box(shoulders, 0.8, 0.42, suit, 0, 1.08, 0); g.add(torso);
@@ -95,7 +109,7 @@ export function makeOwner(skills = {}) {
   const tailL = box(shoulders * 0.45, 0.45, 0.06, suit, -shoulders * 0.24, 0.575, -0.24); g.add(tailL);
   const tailR = box(shoulders * 0.45, 0.45, 0.06, suit, shoulders * 0.24, 0.575, -0.24); g.add(tailR);
   for (const t of [tailL, tailR]) { t.geometry = t.geometry.clone(); t.geometry.translate(0, -0.225, 0); }
-  g.add(box(0.04, 0.9, 0.44, mat(0x8b0000, { roughness: 0.5 }), -shoulders / 2 - 0.005, 0.85, 0)); // red lining edges
+  g.add(box(0.04, 0.9, 0.44, mat(0x8b0000, { roughness: 0.5 }), -shoulders / 2 - 0.005, 0.85, 0));
   g.add(box(0.04, 0.9, 0.44, mat(0x8b0000, { roughness: 0.5 }), shoulders / 2 + 0.005, 0.85, 0));
   g.add(box(0.26, 0.74, 0.02, mat(0xf5f5f5, { roughness: 0.6 }), 0, 1.06, 0.215));                  // shirt
   g.add(box(0.14, 0.08, 0.03, mat(0xf5f5f5), 0, 1.4, 0.22));                                     // collar
@@ -110,43 +124,130 @@ export function makeOwner(skills = {}) {
   hd.add(box(0.44, 0.26, 0.1, hair, 0, 0.1, -0.18));                     // back
   hd.add(box(0.14, 0.05, 0.1, hair, 0, 0.22, 0.2));                      // widow's peak
   hd.add(box(0.05, 0.18, 0.12, hair, -0.2, 0.06, 0.06)); hd.add(box(0.05, 0.18, 0.12, hair, 0.2, 0.06, 0.06)); // sideburns
-  // cigarette (default) or cigar (Poker Face 3)
-  if (skills.poker >= 3) { const c = cyl(0.035, 0.03, 0.3, mat(0x5a2a0a), 0.12, 1.66, 0.3, 8); c.rotation.x = Math.PI / 2; g.add(c); g.add(sph(0.035, glow(0xff4400, 3), 0.12, 1.66, 0.46, 6)); }
-  else { const c = cyl(0.012, 0.012, 0.2, mat(0xffffff), 0.1, 1.66, 0.28, 6); c.rotation.x = Math.PI / 2; c.rotation.z = -0.2; g.add(c); g.add(sph(0.015, glow(0xff5500, 4), 0.09, 1.66, 0.38, 6)); }
+
+  // ---- SMOKING slot: cigar or default cigarette
+  if (has('poker_3') || has('ach_boss_cigar')) {
+    const c = cyl(0.035, 0.03, 0.3, mat(0x5a2a0a), 0.12, 1.66, 0.3, 8); c.rotation.x = Math.PI / 2; g.add(c);
+    g.add(sph(0.035, glow(0xff4400, 3), 0.12, 1.66, 0.46, 6));
+  } else {
+    const c = cyl(0.012, 0.012, 0.2, mat(0xffffff), 0.1, 1.66, 0.28, 6); c.rotation.x = Math.PI / 2; c.rotation.z = -0.2; g.add(c);
+    g.add(sph(0.015, glow(0xff5500, 4), 0.09, 1.66, 0.38, 6));
+  }
+
   // limbs
   const legL = box(0.22, 0.62, 0.24, suitPlain, -0.15, 0.31, 0); g.add(legL);
   const legR = box(0.22, 0.62, 0.24, suitPlain, 0.15, 0.31, 0); g.add(legR);
-  const shoeMat = skills.feet >= 2 ? mat(0xc0392b, { roughness: 0.15, flatShading: false }) : BLACK_GLOSS();
+
+  // ---- SHOES slot
+  let shoeMat = BLACK_GLOSS();
+  if (has('feet_2')) shoeMat = mat(0xc0392b, { roughness: 0.15, flatShading: false });
+  else if (has('feet_1')) shoeMat = mat(0x0c0c12, { metalness: 0.5, roughness: 0.1, flatShading: false });
   legL.add(box(0.23, 0.09, 0.34, shoeMat, 0, -0.29, 0.05)); legR.add(box(0.23, 0.09, 0.34, shoeMat, 0, -0.29, 0.05));
-  const sleeveMat = skills.back >= 1 ? skinMat : suit;
+
+  // ---- ARMS slot: rolled sleeves or suit sleeves
+  const sleeveMat = has('back_1') ? skinMat : suit;
   const armL = box(0.16, 0.66, 0.16, sleeveMat, -shoulders / 2 - 0.1, 1.08, 0); g.add(armL);
   const armR = box(0.16, 0.66, 0.16, sleeveMat, shoulders / 2 + 0.1, 1.08, 0); g.add(armR);
-  const glove = skills.sleight >= 1 ? mat(0xf5f5f5) : skinMat;
+
+  // ---- HANDS slot: gloves, rings, or diamond ring
+  const glove = has('sleight_1') ? mat(0xf5f5f5) : skinMat;
   armL.add(box(0.14, 0.14, 0.14, glove, 0, -0.38, 0)); armR.add(box(0.14, 0.14, 0.14, glove, 0, -0.38, 0));
+
   for (const a of [armL, armR, legL, legR]) { a.geometry = a.geometry.clone(); a.geometry.translate(0, -0.3, 0); a.position.y += 0.3; for (const ch of a.children) ch.position.y -= 0.3; }
   armR.add(cyl(0.025, 0.025, 0.02, gold, 0.06, -0.72, 0.04, 8)); // pinky ring, always
 
-  // ---- Sleight of Hand: gloves(1), rings(2), diamond(3), watch(4), ace up sleeve(5)
-  if (skills.sleight >= 2) for (let i = 0; i < 3; i++) armR.add(cyl(0.025, 0.025, 0.02, gold, -0.05 + i * 0.05, -0.74, 0.07, 6));
-  if (skills.sleight >= 3) armL.add(sph(0.04, glow(0xccffff, 1.2), 0.07, -0.74, 0.07, 6));
-  if (skills.sleight >= 4) armL.add(box(0.18, 0.06, 0.18, gold, 0, -0.58, 0));
-  if (skills.sleight >= 5) armR.add(box(0.12, 0.17, 0.02, mat(0xffffff), 0.1, -0.5, 0.05));
-  // ---- Strong Back: rolled sleeves(1), shoulders(2), belt(3), money bags(4,5)
-  if (skills.back >= 3) g.add(box(shoulders * 0.92, 0.1, 0.44, mat(0x6b3a1a, { roughness: 0.5 }), 0, 0.72, -0.02));
-  if (skills.back >= 4) { const b = sph(0.22, mat(0x6b4f2a, { roughness: 0.9 }), -shoulders / 2 - 0.3, 0.8, -0.1, 8); g.add(b); g.add(box(0.14, 0.1, 0.04, glow(0x3cb371, 0.3), -shoulders / 2 - 0.3, 0.8, 0.1)); }
-  if (skills.back >= 5) { const b = sph(0.22, mat(0x6b4f2a, { roughness: 0.9 }), shoulders / 2 + 0.3, 0.8, -0.1, 8); g.add(b); }
-  // ---- Poker Face: visor(1), shades(2), cigar(3), top hat(4), gold top hat(5)
-  if (skills.poker >= 1 && skills.poker < 4) hd.add(box(0.46, 0.05, 0.3, glow(0x00aa66, 0.6, { transparent: true, opacity: 0.7 }), 0, 0.14, 0.25));
-  if (skills.poker >= 2) { hd.add(box(0.44, 0.09, 0.06, mat(0x050505, { roughness: 0.05, flatShading: false }), 0, 0.03, 0.21)); }
-  if (skills.poker >= 4) { const hm = skills.poker >= 5 ? gold : BLACK_GLOSS(); hd.add(cyl(0.32, 0.32, 0.04, hm, 0, 0.25, 0, 16)); hd.add(cyl(0.22, 0.22, 0.4, hm, 0, 0.46, 0, 16)); hd.add(cyl(0.23, 0.23, 0.06, mat(0x8b0000), 0, 0.31, 0, 16)); }
-  // ---- Silver Tongue: gold tooth(1, in face), chain(2), 2 chains(3), fur collar(4), fur coat(5)
-  if (skills.tongue >= 2) { const ch = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 16), gold); ch.position.set(0, 1.38, 0.18); ch.rotation.x = 1.3; g.add(ch); }
-  if (skills.tongue >= 3) { const ch = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.03, 6, 16), gold); ch.position.set(0, 1.3, 0.2); ch.rotation.x = 1.3; g.add(ch); g.add(box(0.1, 0.12, 0.03, gold, 0, 1.1, 0.26)); }
-  if (skills.tongue >= 4) g.add(box(shoulders + 0.14, 0.18, 0.5, mat(0xf0e2c8, { roughness: 1 }), 0, 1.47, -0.01));
-  if (skills.tongue >= 5) { g.add(box(shoulders + 0.22, 0.9, 0.52, mat(0xf0e2c8, { roughness: 1 }), 0, 1.0, -0.06)); }
-  // ---- Fast Feet: shine(1), red shoes(2), cane(3), gold cane(4), cape(5)
-  if (skills.feet >= 3) { armR.add(cyl(0.02, 0.02, 1.0, skills.feet >= 4 ? gold : mat(0x1a0a0a), 0, -0.85, 0.16, 8)); armR.add(sph(0.05, gold, 0, -0.36, 0.16, 8)); }
-  if (skills.feet >= 5) { const cape = box(shoulders + 0.1, 1.3, 0.05, mat(0x8b0000, { roughness: 0.6, side: THREE.DoubleSide }), 0, 0.85, -0.27); cape.geometry = cape.geometry.clone(); cape.geometry.translate(0, -0.6, 0); cape.position.y = 1.45; g.add(cape); g.userData.cape = cape; }
+  if (has('sleight_2')) for (let i = 0; i < 3; i++) armR.add(cyl(0.025, 0.025, 0.02, gold, -0.05 + i * 0.05, -0.74, 0.07, 6));
+  if (has('sleight_3')) armL.add(sph(0.04, glow(0xccffff, 1.2), 0.07, -0.74, 0.07, 6));
+
+  // ---- WRIST slot: gold watch
+  if (has('sleight_4')) armL.add(box(0.18, 0.06, 0.18, gold, 0, -0.58, 0));
+
+  // ---- SLEEVE slot: ace up sleeve
+  if (has('sleight_5')) armR.add(box(0.12, 0.17, 0.02, mat(0xffffff), 0.1, -0.5, 0.05));
+
+  // ---- BELT slot: weight belt
+  if (has('back_3')) g.add(box(shoulders * 0.92, 0.1, 0.44, mat(0x6b3a1a, { roughness: 0.5 }), 0, 0.72, -0.02));
+
+  // ---- HIP slot: money bags
+  if (has('back_5')) {
+    g.add(sph(0.22, mat(0x6b4f2a, { roughness: 0.9 }), -shoulders / 2 - 0.3, 0.8, -0.1, 8));
+    g.add(box(0.14, 0.1, 0.04, glow(0x3cb371, 0.3), -shoulders / 2 - 0.3, 0.8, 0.1));
+    g.add(sph(0.22, mat(0x6b4f2a, { roughness: 0.9 }), shoulders / 2 + 0.3, 0.8, -0.1, 8));
+  } else if (has('back_4')) {
+    g.add(sph(0.22, mat(0x6b4f2a, { roughness: 0.9 }), -shoulders / 2 - 0.3, 0.8, -0.1, 8));
+    g.add(box(0.14, 0.1, 0.04, glow(0x3cb371, 0.3), -shoulders / 2 - 0.3, 0.8, 0.1));
+  }
+
+  // ---- HAT slot: crown, visor, top hat, or gold top hat
+  if (has('ach_crown')) {
+    // gaudy gold crown with spikes
+    hd.add(cyl(0.28, 0.24, 0.12, gold, 0, 0.32, 0, 12));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      hd.add(box(0.06, 0.16, 0.06, gold, Math.cos(a) * 0.22, 0.44, Math.sin(a) * 0.22));
+      hd.add(sph(0.03, glow(0xffdd44, 1.5), Math.cos(a) * 0.22, 0.54, Math.sin(a) * 0.22, 6));
+    }
+  } else if (has('poker_5')) {
+    hd.add(cyl(0.32, 0.32, 0.04, gold, 0, 0.25, 0, 16));
+    hd.add(cyl(0.22, 0.22, 0.4, gold, 0, 0.46, 0, 16));
+    hd.add(cyl(0.23, 0.23, 0.06, mat(0x8b0000), 0, 0.31, 0, 16));
+  } else if (has('poker_4')) {
+    hd.add(cyl(0.32, 0.32, 0.04, BLACK_GLOSS(), 0, 0.25, 0, 16));
+    hd.add(cyl(0.22, 0.22, 0.4, BLACK_GLOSS(), 0, 0.46, 0, 16));
+    hd.add(cyl(0.23, 0.23, 0.06, mat(0x8b0000), 0, 0.31, 0, 16));
+  } else if (has('poker_1')) {
+    hd.add(box(0.46, 0.05, 0.3, glow(0x00aa66, 0.6, { transparent: true, opacity: 0.7 }), 0, 0.14, 0.25));
+  }
+
+  // ---- GLASSES slot: diamond shades, mirrored shades, or sunglasses
+  if (has('ach_diamond_shades')) {
+    hd.add(box(0.46, 0.1, 0.07, mat(0x111122, { metalness: 0.9, roughness: 0.05, flatShading: false }), 0, 0.03, 0.22));
+    hd.add(box(0.48, 0.02, 0.08, gold, 0, 0.08, 0.22));
+    hd.add(box(0.48, 0.02, 0.08, gold, 0, -0.02, 0.22));
+    hd.add(sph(0.025, glow(0xccffff, 2), -0.18, 0.03, 0.26, 6));
+    hd.add(sph(0.025, glow(0xccffff, 2), 0.18, 0.03, 0.26, 6));
+  } else if (has('ach_shades')) {
+    hd.add(box(0.46, 0.1, 0.07, mat(0xc0c8d0, { metalness: 1.0, roughness: 0.02, flatShading: false }), 0, 0.03, 0.22));
+    hd.add(box(0.48, 0.015, 0.08, mat(0x888888, { metalness: 0.8, roughness: 0.1 }), 0, 0.08, 0.22));
+  } else if (has('poker_2')) {
+    hd.add(box(0.44, 0.09, 0.06, mat(0x050505, { roughness: 0.05, flatShading: false }), 0, 0.03, 0.21));
+  }
+
+  // ---- NECK slot: gold tooth, chain(s), street chain
+  if (has('tongue_3')) {
+    const ch = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.03, 6, 16), gold); ch.position.set(0, 1.3, 0.2); ch.rotation.x = 1.3; g.add(ch);
+    g.add(box(0.1, 0.12, 0.03, gold, 0, 1.1, 0.26));
+    const ch2 = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 16), gold); ch2.position.set(0, 1.38, 0.18); ch2.rotation.x = 1.3; g.add(ch2);
+  } else if (has('ach_street_chain')) {
+    const ch = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.035, 6, 16), gold); ch.position.set(0, 1.34, 0.2); ch.rotation.x = 1.3; g.add(ch);
+    g.add(box(0.12, 0.14, 0.04, gold, 0, 1.12, 0.28));
+  } else if (has('tongue_2')) {
+    const ch = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 6, 16), gold); ch.position.set(0, 1.38, 0.18); ch.rotation.x = 1.3; g.add(ch);
+  }
+
+  // ---- COAT slot: fur collar or full fur coat
+  if (has('tongue_5')) {
+    g.add(box(shoulders + 0.22, 0.9, 0.52, mat(0xf0e2c8, { roughness: 1 }), 0, 1.0, -0.06));
+    g.add(box(shoulders + 0.14, 0.18, 0.5, mat(0xf0e2c8, { roughness: 1 }), 0, 1.47, -0.01));
+  } else if (has('tongue_4')) {
+    g.add(box(shoulders + 0.14, 0.18, 0.5, mat(0xf0e2c8, { roughness: 1 }), 0, 1.47, -0.01));
+  }
+
+  // ---- HELD slot: cane or gold cane
+  if (has('feet_4')) {
+    armR.add(cyl(0.02, 0.02, 1.0, gold, 0, -0.85, 0.16, 8));
+    armR.add(sph(0.05, gold, 0, -0.36, 0.16, 8));
+  } else if (has('feet_3')) {
+    armR.add(cyl(0.02, 0.02, 1.0, mat(0x1a0a0a), 0, -0.85, 0.16, 8));
+    armR.add(sph(0.05, gold, 0, -0.36, 0.16, 8));
+  }
+
+  // ---- CAPE slot
+  if (has('feet_5')) {
+    const cape = box(shoulders + 0.1, 1.3, 0.05, mat(0x8b0000, { roughness: 0.6, side: THREE.DoubleSide }), 0, 0.85, -0.27);
+    cape.geometry = cape.geometry.clone(); cape.geometry.translate(0, -0.6, 0); cape.position.y = 1.45;
+    g.add(cape); g.userData.cape = cape;
+  }
 
   g.userData = { ...g.userData, legL, legR, armL, armR, head: hd, body: torso, tailL, tailR };
   return g;

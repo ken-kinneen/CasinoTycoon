@@ -10,7 +10,7 @@ const $ = id => document.getElementById(id);
 const BUY_QUIPS = ['Money well spent. Their money.', 'Every purchase is an investment in someone else\'s misery.', 'I\'m not a monster. I\'m a businessman. Same thing, better suits.', 'The books balance. Morally? Different books.', 'Sign here, here, and where it says "victim".', 'That\'s the sound of progress. And a little screaming.'];
 
 const MODEL_LABELS = {
-  machines: 'Adds slot machines', tables: 'Adds dealer table', roulette: 'Adds roulette table',
+  machines: 'Goes to Build inventory', tables: 'Goes to Build inventory', roulette: 'Adds roulette table',
   bar: 'Adds bar', buffet: 'Adds buffet', atm: 'Adds ATM', bouncer: 'Adds bouncer',
   cart: 'Adds armored cart', vip: 'Adds VIP lounge', neon: 'Updates signage', carpet: 'New carpet',
   noclocks: 'Removes clocks', windows: 'Boards windows', vents: 'Adds AC vents',
@@ -21,6 +21,19 @@ const MODEL_LABELS = {
   toilet: 'Placed in lobby', selfstatue: 'Statue in lobby', statue: 'Statue in lobby',
   namelights: 'Name on marquee', tiger: 'Tiger in lobby',
 };
+
+const GROUP_META = {
+  slots:      { label: 'Slot Machines',   icon: 'machine',  playstyle: 'PASSIVE',  playstyleClass: 'ps-passive',  desc: 'Earn passively — guests play on their own' },
+  tables:     { label: 'Dealer Tables',   icon: 'cards',    playstyle: 'HANDS-ON', playstyleClass: 'ps-active',   desc: 'Deal against guests yourself for bigger payouts' },
+  traffic:    { label: 'Walk-in Traffic', icon: 'people',   desc: 'Get more guests through the door' },
+  stayTime:   { label: 'Guest Stay Time', icon: 'clock',   desc: 'Keep them in the building longer' },
+  spending:   { label: 'Guest Spending',  icon: 'dollar',   desc: 'Make each guest spend more' },
+  edge:       { label: 'House Edge',      icon: 'chip',     desc: 'Tilt the odds in your favor' },
+  prestige:   { label: 'Prestige',        icon: 'crown',    desc: 'Attract bigger spenders and look good doing it' },
+  heat:       { label: 'Heat Management', icon: 'flame',    desc: 'Keep the authorities looking the other way' },
+  operations: { label: 'Operations',      icon: 'gear',     desc: 'Run a tighter, more efficient casino' },
+};
+const GROUP_ORDER = ['slots', 'tables', 'traffic', 'stayTime', 'spending', 'edge', 'prestige', 'heat', 'operations'];
 const TAB_META = {
   casino: { heading: 'Casino Upgrades', intro: (g, list, owned) => `Improvements for ${g.casinoDisplayName()}. ${owned}/${list.length} installed. Each casino has its own set.` },
   ads: { heading: 'Advertising', intro: (g, list, owned) => `Getting people through the door. ${owned}/${list.length} campaigns running. Advertising follows you to every casino.` },
@@ -44,11 +57,12 @@ export class Ledger {
     this._previews = [];
     this._rafId = null;
     $('ledger-close').onclick = () => this.hide();
+    this.el.onclick = (e) => { if (e.target === this.el) this.hide(); };
     $('ledger-tabs').querySelectorAll('button').forEach(b => b.onclick = () => { this.tab = b.dataset.tab; this.render(); this.onTabChange && this.onTabChange(this.tab); });
     game.on('money', () => { if (this.open) $('ledger-money').textContent = fmtMoney(game.s.money); });
   }
   show(tab) { if (tab) this.tab = tab; this.open = true; this.el.classList.remove('hidden'); this.render(); this._startAnim(); }
-  hide() { this.open = false; this.el.classList.add('hidden'); this._stopAnim(); this.onHide && this.onHide(); }
+  hide() { this.open = false; this.el.classList.add('hidden'); this._stopAnim(); $('ledger-tabs').style.display = ''; this.onHide && this.onHide(); }
   toggle() { this.open ? this.hide() : this.show(); }
 
   _startAnim() {
@@ -75,6 +89,7 @@ export class Ledger {
   }
 
   deltaHtml(effects) {
+    if (!effects || !effects.length) return '';
     return '<div class="stats-grid">' + this.game.previewEffects(effects).map(d => {
       const meta = STAT_META[d.key];
       const better = (d.to - d.from) * meta.good > 0;
@@ -84,11 +99,23 @@ export class Ledger {
     }).join('') + '</div>';
   }
   ownedHtml(effects) {
+    if (!effects || !effects.length) return '';
     return '<div class="stats-grid">' + effects.map(e => {
       const cls = (e.add !== undefined ? e.add : e.mul - 1) * STAT_META[e.stat].good > 0 ? 'good' : 'bad';
       const val = e.add !== undefined ? (e.add > 0 ? '+' : '') + STAT_META[e.stat].fmt(e.add) : 'x' + e.mul;
       return `<div class="k">${icon(STAT_ICON[e.stat] || 'star')}${STAT_META[e.stat].label}</div><div class="v"><span class="${cls}">${val}</span></div>`;
     }).join('') + '</div>';
+  }
+
+  spawnHtml(u, owned) {
+    if (!u.spawns) return '';
+    const key = u.spawns.type === 'machine' ? 'machines' : 'tables';
+    const meta = STAT_META[key];
+    const n = u.spawns.count;
+    const note = owned
+      ? `<span class="good">Owned</span> — place via Build`
+      : `<span class="good">+${n}</span> to Build inventory`;
+    return `<div class="stats-grid"><div class="k">${icon(STAT_ICON[key] || 'star')}${meta.label}</div><div class="v">${note}</div></div>`;
   }
 
   heroEl(u, tier, owned) {
@@ -114,12 +141,23 @@ export class Ledger {
     const div = document.createElement('div');
     div.className = 'card' + (owned ? ' owned' : '');
     const heroEl = this.heroEl(u, tier, owned);
+    // Playstyle badge for slot/table groups
+    const gm = u.group && GROUP_META[u.group];
+    if (gm && gm.playstyle) {
+      const ps = document.createElement('span');
+      ps.className = 'card-playstyle ' + gm.playstyleClass;
+      ps.textContent = gm.playstyle;
+      heroEl.appendChild(ps);
+    }
     div.appendChild(heroEl);
     if (owned) { const st = document.createElement('div'); st.className = 'stamp'; st.textContent = 'OWNED'; div.appendChild(st); }
     const body = document.createElement('div');
     body.className = 'card-body';
     const modelLabel = u.model && MODEL_LABELS[u.model] ? '<div class="card-model-label">' + MODEL_LABELS[u.model] + '</div>' : '';
-    body.innerHTML = '<div class="card-name">' + u.name + '</div><div class="blurb">' + u.blurb + '</div>' + modelLabel + (owned ? this.ownedHtml(u.effects) : this.deltaHtml(u.effects)) + '<div class="card-foot"><div class="cost' + (owned ? ' owned' : '') + '">' + (owned ? icon('check') + ' Paid' : fmtMoney(u.cost)) + '</div><button class="buy' + (owned ? ' owned' : '') + '"' + (owned || !canAfford ? ' disabled' : '') + '>' + (owned ? 'Installed' : canAfford ? 'Buy' : 'Too poor') + '</button></div>';
+    const statsBlock = u.spawns
+      ? this.spawnHtml(u, owned)
+      : (owned ? this.ownedHtml(u.effects) : this.deltaHtml(u.effects));
+    body.innerHTML = '<div class="card-name">' + u.name + '</div><div class="blurb">' + u.blurb + '</div>' + modelLabel + statsBlock + '<div class="card-foot"><div class="cost' + (owned ? ' owned' : '') + '">' + (owned ? icon('check') + ' Paid' : fmtMoney(u.cost)) + '</div><button class="buy' + (owned ? ' owned' : '') + '"' + (owned || !canAfford ? ' disabled' : '') + '>' + (owned ? 'Installed' : canAfford ? 'Buy' : 'Too poor') + '</button></div>';
     div.appendChild(body);
     if (!owned && canAfford) div.querySelector('button').onclick = () => { if (onBuy()) { quip(BUY_QUIPS[Math.floor(Math.random() * BUY_QUIPS.length)]); this.render(); this.onChange && this.onChange(u); } };
     return div;
@@ -147,6 +185,46 @@ export class Ledger {
     for (const t of ['common', 'rare', 'epic', 'legendary']) this.tierSection(t, buckets[t], body);
   }
 
+  renderGrouped(list, ownedFn, affordFn, buyFn, body) {
+    const groups = {};
+    for (const u of list) {
+      const g = u.group || 'operations';
+      (groups[g] = groups[g] || []).push(u);
+    }
+    // Sort each group by cost (cheap to expensive = progressive)
+    for (const g of Object.keys(groups)) groups[g].sort((a, b) => a.cost - b.cost);
+
+    for (const gid of GROUP_ORDER) {
+      const items = groups[gid];
+      if (!items || !items.length) continue;
+      const meta = GROUP_META[gid] || { label: gid, icon: 'star', desc: '' };
+      const ownedCount = items.filter(u => ownedFn(u)).length;
+
+      const sec = document.createElement('div');
+      sec.className = 'shop-group';
+
+      // Group header
+      const hdr = document.createElement('div');
+      hdr.className = 'shop-group-header';
+      hdr.innerHTML =
+        `<span class="shop-group-icon">${icon(meta.icon)}</span>` +
+        `<span class="shop-group-label">${meta.label}</span>` +
+        (meta.playstyle ? `<span class="shop-group-playstyle ${meta.playstyleClass}">${meta.playstyle}</span>` : '') +
+        `<span class="shop-group-count">${ownedCount}/${items.length}</span>` +
+        `<span class="shop-group-desc">${meta.desc}</span>`;
+      sec.appendChild(hdr);
+
+      // Horizontal scroll row of cards
+      const row = document.createElement('div');
+      row.className = 'shop-group-row';
+      for (const u of items) {
+        row.appendChild(this.card(u, list, ownedFn(u), affordFn(u), () => buyFn(u)));
+      }
+      sec.appendChild(row);
+      body.appendChild(sec);
+    }
+  }
+
 
   _makeHero(label, modelKey) {
     const key = resolveModelKey(modelKey);
@@ -165,6 +243,93 @@ export class Ledger {
     return wrap;
   }
 
+  _renderStarterChoice(body, afford) {
+    const g = this.game;
+    const cid = g.casinoDef.id;
+    const starters = CASINO_UPGRADES[cid].filter(u => u.tags && u.tags.includes('starter'));
+
+    $('ledger-heading').textContent = 'Choose Your First Machine';
+    $('ledger-intro').textContent = 'You have $200. You can only afford one. This is how it starts.';
+
+    // Hide the tab bar during starter choice
+    $('ledger-tabs').style.display = 'none';
+
+    const STARTER_INFO = {
+      'd_slot1': {
+        playstyle: 'PASSIVE',
+        playstyleClass: 'starter-passive',
+        desc: 'Guests sit down, pull the lever, and feed the hopper. You collect the cash. No skill required — just warm bodies and bad odds.',
+        pros: ['Earns money while you do other things', 'No player interaction needed', 'Scales with more machines'],
+        cons: ['Lower earning potential per guest', 'You need traffic to make money'],
+      },
+      'd_roulette1': {
+        playstyle: 'HANDS-ON',
+        playstyleClass: 'starter-active',
+        desc: 'You deal against the customer yourself. Spin the wheel, work the margins. Higher risk, higher reward — if you\'ve got the nerve.',
+        pros: ['Higher payout per guest', 'You control the outcome', 'More engaging gameplay'],
+        cons: ['Requires your attention to deal', 'Guests need to be at the table'],
+      },
+    };
+
+    const wrap = document.createElement('div');
+    wrap.className = 'starter-choice';
+
+    for (const u of starters) {
+      const info = STARTER_INFO[u.id] || { playstyle: '???', playstyleClass: '', desc: '', pros: [], cons: [] };
+      const canBuy = afford(u.cost);
+
+      const card = document.createElement('div');
+      card.className = 'starter-card ' + info.playstyleClass;
+
+      // Hero with 3D preview
+      const hero = document.createElement('div');
+      hero.className = 'starter-hero';
+      const badge = document.createElement('div');
+      badge.className = 'starter-badge ' + info.playstyleClass;
+      badge.textContent = info.playstyle;
+      const cvs = document.createElement('canvas');
+      cvs.className = 'starter-preview';
+      cvs.width = PREVIEW_PX;
+      cvs.height = PREVIEW_PX;
+      const key = resolveModelKey(u.model);
+      this._previews.push({ key, cvs, angle: Math.random() * Math.PI * 2 });
+      hero.appendChild(cvs);
+      hero.appendChild(badge);
+      card.appendChild(hero);
+
+      // Body
+      const bd = document.createElement('div');
+      bd.className = 'starter-body';
+      bd.innerHTML =
+        `<div class="starter-name">${u.name}</div>` +
+        `<div class="starter-cost">${fmtMoney(u.cost)}</div>` +
+        `<div class="starter-blurb">${u.blurb}</div>` +
+        `<div class="starter-desc">${info.desc}</div>` +
+        `<div class="starter-traits">` +
+          info.pros.map(p => `<div class="starter-pro">${icon('check')} ${p}</div>`).join('') +
+          info.cons.map(c => `<div class="starter-con">${icon('close')} ${c}</div>`).join('') +
+        `</div>` +
+        `<button class="starter-buy${canBuy ? '' : ' disabled'}"${canBuy ? '' : ' disabled'}>${canBuy ? 'Choose This' : 'Too poor'}</button>`;
+      card.appendChild(bd);
+
+      if (canBuy) {
+        bd.querySelector('.starter-buy').onclick = () => {
+          if (g.buyCasinoUpgrade(u.id)) {
+            $('ledger-tabs').style.display = '';
+            quip(u.id === 'd_slot1'
+              ? 'A slot machine. One lever, infinite possibilities. Mostly bad ones.'
+              : 'A roulette table. Time to get my hands dirty.');
+            this.onChange && this.onChange(u);
+          }
+        };
+      }
+
+      wrap.appendChild(card);
+    }
+
+    body.appendChild(wrap);
+  }
+
   render() {
     const g = this.game;
     this._previews = [];
@@ -174,10 +339,14 @@ export class Ledger {
     const body = this.body; body.innerHTML = '';
 
     const afford = (cost) => g.godMode || g.s.money >= cost;
-    if (this.tab === 'casino') {
+
+    // During tutorial buy_machine step: show a special starter-choice screen
+    if (this.tab === 'casino' && !g.s.tutorialComplete && (g.s.tutorialStep === 1)) {
+      this._renderStarterChoice(body, afford);
+    } else if (this.tab === 'casino') {
       const list = CASINO_UPGRADES[g.casinoDef.id];
       $('ledger-intro').textContent = TAB_META.casino.intro(g, list, list.filter(u => g.ownsCasinoUpgrade(u.id)).length);
-      this.renderTiered(list, u => g.ownsCasinoUpgrade(u.id), u => afford(u.cost), u => g.buyCasinoUpgrade(u.id), body);
+      this.renderGrouped(list, u => g.ownsCasinoUpgrade(u.id), u => afford(u.cost), u => g.buyCasinoUpgrade(u.id), body);
     } else if (this.tab === 'ads') {
       $('ledger-intro').textContent = TAB_META.ads.intro(g, AD_UPGRADES, AD_UPGRADES.filter(u => g.ownsAd(u.id)).length);
       this.renderTiered(AD_UPGRADES, u => g.ownsAd(u.id), u => afford(u.cost), u => g.buyAd(u.id), body);

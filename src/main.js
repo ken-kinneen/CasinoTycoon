@@ -15,8 +15,11 @@ import { DealerGame } from './minigames/dealer.js';
 import { fmtMoney } from './minigames/base.js';
 import { PedestrianManager } from './world/pedestrians.js';
 import { FloorEditor } from './world/editor.js';
+import { renderPreviewSnapshot, resolveModelKey } from './ui/model-preview.js';
 import * as music from './audio/music.js';
 import * as sfx from './audio/sfx.js';
+import { DevPanel } from './ui/devpanel.js';
+import { Tutorial } from './engine/tutorial.js';
 
 const $ = id => document.getElementById(id);
 
@@ -31,7 +34,24 @@ const effects = new Effects(scene);
 const customers = new CustomerManager(scene, world, game, effects);
 const player = new Player(scene, camera, game);
 const hud = new HUD(game, customers);
-const ledger = new Ledger(game, () => {});
+let _placingMachineType = null; // 'machine' | 'table' while placing from inventory
+
+const ledger = new Ledger(game, (u) => {
+  if (u && u.spawns) {
+    ledger.hide();
+    modalOpen = false;
+    setOpenModal(null);
+    // Keep item in inventory — open Build so the player places it themselves
+    setTimeout(() => {
+      game.reconcileMachineInventory();
+      toggleArrangeMode(true, true);
+      renderBuildInventory(u.spawns.type);
+      const n = game.machineInventoryFor().filter(t => t === u.spawns.type).length;
+      const label = MACHINE_INV_NAMES[u.spawns.type] || u.spawns.type;
+      toast(`${label} in Build inventory (${n}). Click it to place.`, 'good', 4500);
+    }, 150);
+  }
+});
 const achScreen = new AchievementsScreen(game);
 const pedMgr = new PedestrianManager(scene, world);
 const editor = new FloorEditor(scene, camera, canvas, world);
@@ -39,6 +59,220 @@ player.editor = editor;
 ledger.onHide = () => { modalOpen = false; setOpenModal(null); };
 ledger.onTabChange = (tab) => { setOpenModal(`ledger:${tab}`); };
 achScreen.onHide = () => { modalOpen = false; setOpenModal(null); };
+
+const PLACEABLE_NAMES = {
+  planter: 'Casino Planter', velvetrope: 'Velvet Rope', toilet: 'Gold Toilet',
+  selfstatue: 'Your Statue', namelights: 'Name in Lights', fountain: 'Champagne Fountain',
+  ornateurn: 'Ornate Urn', palmtree: 'Palm Tree', tiger: 'Pet Tiger',
+  aquarium: 'Exotic Aquarium', megaphone: 'Gold Megaphone', fireplace: 'Grand Fireplace',
+  chandelier: 'Crystal Chandelier',
+};
+
+const MACHINE_INV_NAMES = { machine: 'Slot Machine', table: 'Dealer Table' };
+const MACHINE_INV_MODELS = { machine: 'machines', table: 'tables' };
+
+let buildHighlight = null;
+let _pendingPlaceKey = null;
+let _placingFromInventory = null;
+
+function ensureFloorLayout() {
+  const cid = game.casinoDef.id;
+  if (!game.s.floorLayouts) game.s.floorLayouts = {};
+  if (!game.s.floorLayouts[cid]) game.s.floorLayouts[cid] = { machines: [], tables: [], props: [] };
+  const L = game.s.floorLayouts[cid];
+  if (!L.machines) L.machines = [];
+  if (!L.tables) L.tables = [];
+  if (!L.props) L.props = [];
+  return L;
+}
+
+/** Pull one machine/table from inventory and enter move mode to place it. */
+function beginPlaceMachine(type) {
+  if (_placingMachineType || editor.moveMode) {
+    toast('Finish placing the current item first.', 'bad', 2500);
+    return false;
+  }
+  if (!game.takeFromInventory(type)) {
+    game.reconcileMachineInventory();
+    if (!game.takeFromInventory(type)) {
+      toast('Nothing to place.', 'bad', 2500);
+      renderBuildInventory();
+      return false;
+    }
+  }
+
+  const layout = ensureFloorLayout();
+  // Safe center of the floor — player position was causing invalid/out-of-bounds spawns
+  const entry = { x: 0, z: 0, ry: 0 };
+  if (type === 'machine') layout.machines.push(entry);
+  else layout.tables.push(entry);
+
+  game.recompute();
+  game.save();
+  rebuildWorld();
+
+  const arr = type === 'machine' ? world.machines : world.tables;
+  const index = arr.length - 1;
+  const item = arr[index];
+  if (!item) {
+    // Mesh failed to spawn — roll back so the item is not lost
+    const arrL = type === 'machine' ? layout.machines : layout.tables;
+    if (arrL.length) arrL.pop();
+    game.returnToInventory(type);
+    game.recompute();
+    game.save();
+    rebuildWorld();
+    renderBuildInventory();
+    toast('Could not place that item. Try again.', 'bad', 3000);
+    return false;
+  }
+
+  _placingMachineType = type;
+  editor.select({ type, index, obj: item.group, data: item });
+  editor.enterMoveMode();
+  renderBuildInventory();
+  toast(`Click to place your ${MACHINE_INV_NAMES[type].toLowerCase()}. Esc cancels.`, 'good', 3500);
+  return true;
+}
+
+function cancelPlaceMachine() {
+  if (!_placingMachineType) return;
+  const type = _placingMachineType;
+  _placingMachineType = null;
+  const layout = ensureFloorLayout();
+  const arr = type === 'machine' ? layout.machines : layout.tables;
+  if (arr.length) arr.pop();
+  game.returnToInventory(type);
+  game.recompute();
+  game.save();
+  rebuildWorld();
+}
+
+function renderBuildInventory(highlightKey) {
+  const panel = $('build-inventory');
+  const list = $('build-inv-items');
+  if (!panel || !list) return;
+  if (highlightKey !== undefined) buildHighlight = highlightKey;
+
+  game.reconcileMachineInventory();
+  const inv = game.machineInventoryFor();
+  const achItems = game.s.achItems || [];
+
+  // Stack identical machine/table types for clearer UI
+  const stacks = [];
+  const stackMap = {};
+  for (const type of inv) {
+    if (stackMap[type] == null) {
+      stackMap[type] = stacks.length;
+      stacks.push({ type, count: 0 });
+    }
+    stacks[stackMap[type]].count++;
+  }
+
+  const hasAnything = stacks.length > 0 || achItems.length > 0;
+
+  if (!hasAnything) {
+    list.innerHTML = '<div class="build-inv-empty">Buy machines in the Shop — they show up here to place.</div>';
+  } else {
+    let html = '';
+
+    for (const stack of stacks) {
+      const modelKey = MACHINE_INV_MODELS[stack.type];
+      const hi = buildHighlight === stack.type || buildHighlight === `inv-${stack.type}` ? ' highlighted' : '';
+      const countBadge = stack.count > 1 ? `<span class="build-inv-count">×${stack.count}</span>` : '';
+      html += `<div class="build-inv-card${hi}" data-inv-type="${stack.type}">`
+        + `<div class="build-inv-preview"><canvas class="build-pv-canvas" data-model="${modelKey}" width="128" height="128"></canvas>${countBadge}</div>`
+        + `<span class="build-inv-badge build-badge-stored">CLICK TO PLACE</span>`
+        + `<div class="build-inv-label"><div class="build-inv-name">${MACHINE_INV_NAMES[stack.type]}</div></div>`
+        + `</div>`;
+    }
+
+    html += achItems.map(key => {
+      const on = game.isEquipped(key);
+      const hi = buildHighlight === key ? ' highlighted' : '';
+      return `<div class="build-inv-card${on ? ' equipped' : ''}${hi}" data-build-item="${key}">`
+        + `<div class="build-inv-preview"><canvas class="build-pv-canvas" data-model="${key}" width="128" height="128"></canvas></div>`
+        + (on
+          ? `<span class="build-inv-badge build-badge-placed">ON FLOOR</span>`
+          : `<span class="build-inv-badge build-badge-stored">CLICK TO PLACE</span>`)
+        + `<div class="build-inv-label"><div class="build-inv-name">${PLACEABLE_NAMES[key] || key}</div></div>`
+        + `</div>`;
+    }).join('');
+
+    list.innerHTML = html;
+
+    for (const el of list.querySelectorAll('[data-inv-type]')) {
+      el.onclick = (e) => {
+        e.stopPropagation();
+        beginPlaceMachine(el.dataset.invType);
+      };
+    }
+
+    for (const el of list.querySelectorAll('[data-build-item]')) {
+      const key = el.dataset.buildItem;
+      if (game.isEquipped(key)) {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          game.unequipItem(key);
+          renderBuildInventory();
+        };
+      } else {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          _pendingPlaceKey = key;
+          game.equipItem(key);
+        };
+      }
+    }
+
+    const canvases = list.querySelectorAll('.build-pv-canvas');
+    const angle = Math.PI * 0.15;
+    for (const c of canvases) {
+      const modelKey = resolveModelKey(c.dataset.model);
+      renderPreviewSnapshot(modelKey, c, angle);
+    }
+
+    if (buildHighlight) {
+      const target = list.querySelector(`[data-build-item="${buildHighlight}"]`)
+        || list.querySelector(`[data-inv-type="${buildHighlight}"]`);
+      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }));
+    }
+  }
+  panel.classList.remove('hidden');
+}
+
+function _findPropByKey(key) {
+  const name = PLACEABLE_NAMES[key];
+  if (!name) return null;
+  for (let i = 0; i < world.props.length; i++) {
+    if (world.props[i].name === name) return { type: 'prop', index: i, obj: world.props[i].group, data: world.props[i] };
+  }
+  return null;
+}
+
+function hideBuildInventory() {
+  if (_placingMachineType) cancelPlaceMachine();
+  const panel = $('build-inventory');
+  if (panel) panel.classList.add('hidden');
+  buildHighlight = null;
+  _pendingPlaceKey = null;
+  _placingFromInventory = null;
+}
+
+achScreen.onOpenWardrobe = (cosmeticKey) => {
+  achScreen.hide();
+  modalOpen = true;
+  setOpenModal('wardrobe');
+  hud.toggleWardrobe(true, { highlight: cosmeticKey });
+};
+achScreen.onOpenBuild = (itemKey) => {
+  achScreen.hide();
+  modalOpen = false;
+  setOpenModal(null);
+  toggleArrangeMode(true);
+  renderBuildInventory(itemKey);
+};
+hud.onWardrobeHide = () => { modalOpen = false; setOpenModal(null); };
 
 let started = false;
 let activeGame = null;
@@ -75,7 +309,7 @@ function rebuildWorld({ keepCustomers = true } = {}) {
   world.build(def, game);
   effects.build(world, def);
   postfx.setMood(MOODS[def.id]);
-  if (game.s.lighting) applyLightSettings(loadLightSettings());
+  if (game.s.lighting) applyLightSettings(game.s.lighting);
   scene.fog.density = def.id === 'diablo' ? 0.012 : 0.018;
   if (!keepCustomers) customers.clearAll();
   for (const c of customers.customers) {
@@ -106,36 +340,96 @@ game.on('casino', () => {
   quip(game.s.casino === 2 ? 'Vegas. I\'m home.' : 'Bigger floor. Bigger hoppers. Bigger everything.');
 });
 game.on('upgrade', u => {
-  if (!u.model) return;
-  const oldMachines = world.machines.length;
-  const oldTables = world.tables.length;
-  rebuildWorld();
-  // new machines/tables from this upgrade spawn outside for manual placement
-  const newMachines = world.machines.length;
-  const newTables = world.tables.length;
-  for (let i = oldMachines; i < newMachines; i++) editor.spawnOutside('machine', i);
-  for (let i = oldTables; i < newTables; i++) editor.spawnOutside('table', i);
-  if (newMachines > oldMachines || newTables > oldTables) {
-    toast(`New ${newMachines > oldMachines ? 'machines' : 'tables'} delivered outside. Drag them onto the floor.`, 'good', 5000);
+  // Spawn upgrades stay in inventory until placed — no world rebuild needed
+  if (u.spawns) {
+    game.reconcileMachineInventory();
+    game.save();
+    return;
   }
+  // Cosmetic / scene upgrades still need a rebuild
+  if (!u.model) return;
+  rebuildWorld();
 });
 game.on('skill', () => player.rebuildModel());
+game.on('wardrobe', () => { player.rebuildModel(); hud.drawPortrait(); });
 game.on('achievement', (a) => {
   if (achScreen.open) achScreen.render();
   if (a.item) rebuildWorld();
+});
+game.on('equip', () => {
+  rebuildWorld();
+  if (_pendingPlaceKey) {
+    const key = _pendingPlaceKey;
+    _pendingPlaceKey = null;
+    const propInfo = _findPropByKey(key);
+    if (propInfo) {
+      _placingFromInventory = key;
+      editor.select(propInfo);
+      editor.enterMoveMode();
+    }
+    renderBuildInventory();
+  }
 });
 game.on('won', () => setTimeout(showWin, 1500));
 let whaleToastAt = -999;
 game.on('customer', ({ type }) => { if (type === 'whale' && time - whaleToastAt > 25) { whaleToastAt = time; toast('A whale just walked in. Get to the table.', 'good'); } });
 
 // build the world right away so it sits behind the title screen
+game.reconcileMachineInventory();
 rebuildWorld({ keepCustomers: false });
 player.model.visible = false;
+
+// ---- tutorial ---------------------------------------------------------------
+const tutorial = new Tutorial();
+
+// Listen for events that advance tutorial steps
+game.on('upgrade', (u) => {
+  if (!tutorial.isActive()) return;
+  if (tutorial.stepId === 'buy_machine' && (u.spawns || tutorial.hasBoughtMachine())) {
+    tutorial.advance(); // -> place_it
+    tutorial.showObjective('place_it');
+    toast('Machine acquired! Open Build and click it in your inventory.', 'good', 4000);
+  }
+});
+
+game.on('customer', () => {
+  if (!tutorial.isActive()) return;
+  if (tutorial.stepId === 'first_guest') {
+    tutorial.hideObjective();
+    tutorial.advance(); // -> earn_500
+    setTimeout(() => {
+      tutorial.showCutscene('first_guest').then(() => {
+        tutorial.showObjective('earn_500');
+      });
+    }, 1500);
+  }
+});
+
+game.on('money', ({ amount, source }) => {
+  if (!tutorial.isActive()) return;
+  if (tutorial.stepId === 'earn_500' && game.s.lifetimeEarned >= 500) {
+    tutorial.advance(); // -> done
+    tutorial.hideObjective();
+    toast('Tutorial complete. The floor is yours.', 'good', 5000);
+    quip('Five hundred bucks. That\'s a start. A terrible, beautiful start.');
+  }
+});
+
+tutorial.onSkip(() => {
+  rebuildWorld();
+});
 
 // ---- intro / reset ------------------------------------------------------------
 const hasSave = game.s.lifetimeEarned > 0 || game.s.playTime > 0;
 if (hasSave) { $('intro').classList.add('hidden'); }
 else { document.documentElement.classList.remove('has-save'); }
+
+async function runTutorialIntro() {
+  player.teleport(world.doorInside.x, world.doorInside.z - 2);
+  await tutorial.showCutscene('intro');
+  tutorial.advance(); // intro -> buy_machine
+  tutorial.showObjective('buy_machine');
+}
 
 function start() {
   player.model.visible = true;
@@ -151,8 +445,26 @@ function start() {
     hud.show();
     editor.start();
     music.start();
-    setTimeout(() => quip(hasSave ? 'Back to work. The machines missed me.' : 'Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
-    setTimeout(() => customers.queue(2), 1500);
+    if (tutorial.shouldRun()) {
+      tutorial.active = true;
+      runTutorialIntro();
+    } else if (!tutorial.complete && tutorial.step > 0 && tutorial.step < 7) {
+      // Returning mid-tutorial — restore the objective
+      tutorial.active = true;
+      const sid = tutorial.stepId;
+      if (sid && sid !== 'intro' && sid !== 'done' && sid !== 'nobody') {
+        tutorial.showObjective(sid);
+      }
+      setTimeout(() => quip('Where was I? Right. Building an empire.'), 600);
+    } else if (!hasSave) {
+      setTimeout(() => quip('Two hundred dollars and a dream. Let\'s ruin some lives.'), 600);
+    } else {
+      setTimeout(() => quip('Back to work. The machines missed me.'), 600);
+    }
+    // Only queue initial customers if they have machines and traffic (not a fresh game)
+    if (game.stats.machines + game.stats.tables > 0 && game.stats.trafficPerMin > 0) {
+      setTimeout(() => customers.queue(2), 1500);
+    }
     restoreOpenModal();
   }
 }
@@ -164,6 +476,7 @@ function restoreOpenModal() {
   else if (m === 'help') { $('help').classList.remove('hidden'); modalOpen = true; }
   else if (m === 'achievements') { achScreen.show(); modalOpen = true; }
   else if (m.startsWith('ledger')) { const tab = m.split(':')[1]; ledger.show(tab); modalOpen = true; }
+  else if (m === 'wardrobe') { hud.toggleWardrobe(true); modalOpen = true; }
 }
 
 function updateDisplayNames() {
@@ -177,12 +490,16 @@ updateDisplayNames();
 
 if (hasSave) start();
 $('intro-start').onclick = start;
-$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); updateDisplayNames(); rebuildWorld({ keepCustomers: false }); player.rebuildModel(); hud.drawPortrait(); player.teleport(world.doorInside.x, world.doorInside.z - 1); start(); } };
+$('intro-reset').onclick = () => { if (confirm('Wipe the books and start over?')) { game.reset(); window.location.reload(); } };
 $('help-close').onclick = () => { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
 $('result-close').onclick = () => { $('result').classList.add('hidden'); modalOpen = false; setOpenModal(null); };
 $('btn-ledger').onclick = () => toggleLedger();
 $('btn-achievements').onclick = () => { if (!started || activeGame) return; if (achScreen.open) { achScreen.hide(); } else if (!modalOpen) { achScreen.show(); modalOpen = true; setOpenModal('achievements'); } };
-$('btn-stats').onclick = () => hud.toggleStats();
+$('btn-wardrobe').onclick = () => {
+  if (!started || activeGame) return;
+  if (hud._wardrobeOpen) { hud.toggleWardrobe(false); modalOpen = false; setOpenModal(null); }
+  else if (!modalOpen) { hud.toggleWardrobe(true); modalOpen = true; setOpenModal('wardrobe'); }
+};
 $('btn-help').onclick = () => { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); };
 
 // ---- settings screen ----------------------------------------------------------
@@ -192,19 +509,11 @@ function updateSettingsUI() {
   $('settings-vol').value = Math.round(music.getVolume() * 100);
   $('settings-vol-num').textContent = `${Math.round(music.getVolume() * 100)}%`;
 }
-function updateGodUI() {
-  $('settings-god').classList.toggle('muted', !game.godMode);
-  $('settings-god-label').textContent = game.godMode ? 'ON' : 'OFF';
-}
 function openSettings() {
   $('settings-name').value = game.s.playerName;
   $('settings-casino-name').value = game.casinoDisplayName();
   $('settings-casino-name').placeholder = game.casinoDef.name;
-  $('settings-level').value = game.s.casino;
-  $('settings-money').value = Math.floor(game.s.money);
   updateSettingsUI();
-  updateGodUI();
-  updateLightUI();
   $('settings').classList.remove('hidden');
   modalOpen = true;
   setOpenModal('settings');
@@ -226,25 +535,7 @@ function closeSettings() {
     else game.s.casinoNames[cid] = newCasinoName;
     changed = true;
   }
-  // dev: money
-  const rawMoney = parseFloat($('settings-money').value);
-  if (!isNaN(rawMoney) && rawMoney >= 0 && rawMoney !== game.s.money) {
-    game.s.money = rawMoney;
-    changed = true;
-  }
-  // dev: casino level
-  let casinoChanged = false;
-  const newLevel = parseInt($('settings-level').value, 10);
-  if (newLevel !== game.s.casino && newLevel >= 0 && newLevel <= 2) {
-    if (!game.s.ownedCasinos.includes(newLevel)) game.s.ownedCasinos.push(newLevel);
-    game.s.casino = newLevel;
-    game.s.machineCash = 0;
-    game.recompute();
-    customers.clearAll();
-    changed = true;
-    casinoChanged = true;
-  }
-  if (changed) { game.save(); rebuildWorld({ keepCustomers: !casinoChanged }); updateDisplayNames(); }
+  if (changed) { game.save(); rebuildWorld(); updateDisplayNames(); }
   $('settings').classList.add('hidden');
   modalOpen = false;
   setOpenModal(null);
@@ -254,11 +545,7 @@ $('settings-close').onclick = closeSettings;
 $('settings').onclick = (e) => { if (e.target === $('settings')) closeSettings(); };
 $('settings-music-toggle').onclick = () => { music.toggleMute(); updateSettingsUI(); };
 $('settings-vol').oninput = () => { music.setVolume($('settings-vol').value / 100); $('settings-vol-num').textContent = `${$('settings-vol').value}%`; };
-$('settings-god').onclick = () => { game.godMode = !game.godMode; game.save(); updateGodUI(); };
-
 // ---- lighting settings ----------------------------------------------------------
-function loadLightSettings() { return game.s.lighting; }
-
 function applyLightSettings(ls) {
   postfx.bloom.strength = ls.bloom / 100;
   renderer.toneMappingExposure = ls.exposure / 100;
@@ -266,50 +553,7 @@ function applyLightSettings(ls) {
   postfx.grade.uniforms.vignette.value = ls.vignette / 100;
 }
 
-function updateLightUI() {
-  const ls = loadLightSettings();
-  for (const key of ['bloom', 'exposure', 'grain', 'vignette']) {
-    $('settings-' + key).value = ls[key];
-    $('settings-' + key + '-num').textContent = `${ls[key]}%`;
-  }
-  updateResetButtons();
-}
-
-function onLightSlider(key) {
-  const val = parseInt($('settings-' + key).value, 10);
-  $('settings-' + key + '-num').textContent = `${val}%`;
-  if (!game.s.lighting) game.s.lighting = {};
-  game.s.lighting[key] = val;
-  applyLightSettings(loadLightSettings());
-  updateResetButtons();
-  game.save();
-}
-
-$('settings-bloom').oninput = () => onLightSlider('bloom');
-$('settings-exposure').oninput = () => onLightSlider('exposure');
-$('settings-grain').oninput = () => onLightSlider('grain');
-$('settings-vignette').oninput = () => onLightSlider('vignette');
-
-function updateResetButtons() {
-  for (const btn of document.querySelectorAll('.setting-reset')) {
-    const key = btn.dataset.key;
-    const def = parseInt(btn.dataset.default, 10);
-    const cur = parseInt($('settings-' + key).value, 10);
-    btn.classList.toggle('changed', cur !== def);
-  }
-}
-
-for (const btn of document.querySelectorAll('.setting-reset')) {
-  btn.onclick = () => {
-    const key = btn.dataset.key;
-    const def = parseInt(btn.dataset.default, 10);
-    $('settings-' + key).value = def;
-    onLightSlider(key);
-    updateResetButtons();
-  };
-}
-
-applyLightSettings(loadLightSettings());
+applyLightSettings(game.s.lighting);
 
 // ---- perf stats overlay ---------------------------------------------------------
 let perfOn = !!game.s.perfStats;
@@ -317,8 +561,6 @@ const perfEl = $('perf-stats');
 let perfFrames = 0, perfTime = 0, perfFPS = 0;
 
 function updatePerfUI() {
-  $('settings-perf').classList.toggle('muted', !perfOn);
-  $('settings-perf-label').textContent = perfOn ? 'ON' : 'OFF';
   perfEl.classList.toggle('hidden', !perfOn);
 }
 updatePerfUI();
@@ -338,16 +580,37 @@ function perfTick(dt) {
       (heap ? `  |  Heap ${(heap.usedJSHeapSize / 1048576).toFixed(0)}MB` : '');
   }
 }
-$('settings-perf').onclick = () => { perfOn = !perfOn; game.s.perfStats = perfOn; game.save(); updatePerfUI(); };
-
 // ---- uncap FPS toggle -----------------------------------------------------------
 let uncapped = !!game.s.uncapFPS;
-function updateUncapUI() {
-  $('settings-uncap').classList.toggle('muted', !uncapped);
-  $('settings-uncap-label').textContent = uncapped ? 'ON' : 'OFF';
-}
-updateUncapUI();
-$('settings-uncap').onclick = () => { uncapped = !uncapped; game.s.uncapFPS = uncapped; game.save(); updateUncapUI(); };
+
+// ---- dev panel ------------------------------------------------------------------
+const devPanel = new DevPanel({
+  onCasinoChange: (idx) => {
+    customers.clearAll();
+    rebuildWorld({ keepCustomers: false });
+    player.teleport(world.doorInside.x, world.doorInside.z - 1);
+    player.rebuildModel();
+    updateDisplayNames();
+  },
+  onMoneyChange: () => {},
+  onReset: () => {
+    game.reset();
+    tutorial.reset();
+    updateDisplayNames();
+    rebuildWorld({ keepCustomers: false });
+    player.rebuildModel();
+    hud.drawPortrait();
+    player.teleport(world.doorInside.x, world.doorInside.z - 1);
+    // Full page reload so the tutorial triggers cleanly on the fresh state
+    window.location.reload();
+  },
+  onGodModeChange: () => {},
+  onPerfChange: () => { perfOn = !perfOn; game.s.perfStats = perfOn; game.save(); updatePerfUI(); },
+  onUncapChange: () => { uncapped = !uncapped; game.s.uncapFPS = uncapped; game.save(); },
+  onLightingChange: () => applyLightSettings(game.s.lighting),
+  onTutorialSkip: () => { tutorial.skip(); rebuildWorld(); },
+  onTutorialReset: () => { tutorial.reset(); },
+});
 
 // ---- floor editor (always-on: hover outlines, click to select) ------------------
 
@@ -404,6 +667,23 @@ editor.onSelect = (info, screenPos) => {
 };
 editor.onChange = () => { saveFloorLayout(); world.rebuildColliders(); };
 
+// Wrap editor.onChange to also detect tutorial place_it step
+const _origEditorOnChange = editor.onChange;
+editor.onChange = () => {
+  _origEditorOnChange();
+  game.recompute();
+  if (tutorial.isActive() && tutorial.stepId === 'place_it' && tutorial.hasPlacedMachine()) {
+    if (arrangeMode) toggleArrangeMode(false);
+    tutorial.advance(); // -> nobody
+    tutorial.hideObjective();
+    setTimeout(async () => {
+      await tutorial.showCutscene('nobody');
+      tutorial.advance(); // -> advertise
+      tutorial.showObjective('advertise');
+    }, 800);
+  }
+};
+
 // tooltip follows the object during move mode
 const moveTooltip = $('move-tooltip');
 const TOOLTIP_OK = '<kbd>R</kbd> <span class="sep">·</span> rotate <span class="sep">·</span> click to place <span class="sep">·</span> <kbd>Esc</kbd> <span class="sep">·</span> cancel';
@@ -429,32 +709,72 @@ $('editor-deal').onclick = () => {
 
 // Arrange Floor button in sidebar — toggles arrange mode
 let arrangeMode = false;
-function toggleArrangeMode(force) {
+function toggleArrangeMode(force, silent) {
   arrangeMode = force !== undefined ? force : !arrangeMode;
   editor.arrangeMode = arrangeMode;
   $('btn-arrange').classList.toggle('active', arrangeMode);
   if (arrangeMode) {
-    toast('Click any machine or table to move it.', 'good', 2500);
+    game.reconcileMachineInventory();
+    if (!silent) toast('Click an item in your inventory to place it on the floor.', 'good', 2800);
+    renderBuildInventory();
   } else {
     editor.deselect();
+    hideBuildInventory();
   }
 }
 $('btn-arrange').onclick = () => {
   if (!started || activeGame || modalOpen) return;
   toggleArrangeMode();
 };
+$('build-inv-close').onclick = () => toggleArrangeMode(false);
 // when editor enters move mode from any path, mark arrange as active
 const _origEnter = editor.enterMoveMode.bind(editor);
 editor.enterMoveMode = function() {
   _origEnter();
   if (editor.moveMode) $('btn-arrange').classList.add('active');
 };
-// when move ends, clear arrange
+// if move is cancelled on an item placed from inventory, unequip / return it
+const _origCancel = editor.cancelMove.bind(editor);
+editor.cancelMove = function() {
+  const wasPlacing = _placingFromInventory;
+  const wasMachine = _placingMachineType;
+  _placingFromInventory = null;
+  _placingMachineType = null;
+  _origCancel();
+  if (wasPlacing) game.unequipItem(wasPlacing);
+  if (wasMachine) {
+    const layout = ensureFloorLayout();
+    const arr = wasMachine === 'machine' ? layout.machines : layout.tables;
+    if (arr.length) arr.pop();
+    game.returnToInventory(wasMachine);
+    game.recompute();
+    game.save();
+    rebuildWorld();
+  }
+  if (arrangeMode) renderBuildInventory();
+};
+// confirm placement of a machine from inventory
+const _origConfirm = editor.confirmMove.bind(editor);
+editor.confirmMove = function() {
+  if (!editor.moveMode || !editor.selected || !editor._placementValid) return;
+  const confirmedMachine = _placingMachineType;
+  _placingFromInventory = null;
+  _placingMachineType = null;
+  _origConfirm(); // finishes move + fires onChange (saves layout)
+  if (confirmedMachine) {
+    game.recompute();
+    game.save();
+  }
+  if (arrangeMode) renderBuildInventory();
+  else {
+    $('btn-arrange').classList.remove('active');
+    hideBuildInventory();
+  }
+};
+// when move ends via other paths, keep build inventory open if in arrange mode
 const _origFinish = editor._finishMove.bind(editor);
 editor._finishMove = function() {
   _origFinish();
-  arrangeMode = false;
-  $('btn-arrange').classList.remove('active');
 };
 
 function saveFloorLayout() {
@@ -476,6 +796,7 @@ function loadFloorLayout() {
 }
 document.querySelectorAll('.sb-action').forEach(h => {
   if (h.id === 'btn-arrange') return; // handled separately
+  if (!h.dataset.key) return; // shortcut buttons have their own handlers
   h.onclick = () => {
     if (!started || modalOpen || activeGame) return;
     const k = h.dataset.key;
@@ -529,6 +850,10 @@ function launchAdGame(ped) {
     if (slipped) {
       sfx.playRandom('triumph', 'chuckle');
       showResult('Card slipped', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="row"><span>Guest on their way?</span><span class="big">Yes</span></div><div class="quip">"They'll come. They always come."</div>`, 'HOOKED');
+      if (tutorial.isActive() && tutorial.stepId === 'advertise') {
+        tutorial.advance(); // -> first_guest
+        tutorial.showObjective('first_guest');
+      }
     } else {
       sfx.playRandom('angry', 'frustrate');
       showResult('Busted', `<div class="row"><span>The mark</span><b>${victim.name}</b></div><div class="quip">"${['They felt that. Sloppy.', 'Gone. Find someone less alert.', 'Tighter grip next time.'][Math.floor(Math.random() * 3)]}"</div>`, 'BUSTED');
@@ -577,10 +902,12 @@ function startActivity(key) {
 window.addEventListener('keydown', e => {
   if (!started || activeGame) return;
   if (e.code === 'KeyU') { if (!modalOpen || ledger.open) toggleLedger(); }
-  else if (e.code === 'Tab') { e.preventDefault(); hud.toggleStats(); }
+  else if (e.code === 'Tab') { e.preventDefault(); if (hud._wardrobeOpen) { hud.toggleWardrobe(false); modalOpen = false; setOpenModal(null); } else if (!modalOpen) { hud.toggleWardrobe(true); modalOpen = true; setOpenModal('wardrobe'); } }
   else if (e.code === 'KeyH') { if (!modalOpen) { $('help').classList.remove('hidden'); modalOpen = true; setOpenModal('help'); } else if (!$('help').classList.contains('hidden')) { $('help').classList.add('hidden'); modalOpen = false; setOpenModal(null); } }
-  else if (e.code === 'Escape') { if (editor.selected) { /* editor handles its own Escape */ } else if (achScreen.open) achScreen.hide(); else if (ledger.open) toggleLedger(); else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); else hud.toggleStats(false); }
+  else if (e.code === 'Escape') { if (devPanel.open) devPanel.setOpen(false); else if (editor.selected) { /* editor handles its own Escape */ } else if (arrangeMode) toggleArrangeMode(false); else if (achScreen.open) achScreen.hide(); else if (ledger.open) toggleLedger(); else if (hud._wardrobeOpen) { hud.toggleWardrobe(false); modalOpen = false; setOpenModal(null); } else if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!$('result').classList.contains('hidden')) $('result-close').click(); else if (!$('help').classList.contains('hidden')) $('help-close').click(); }
   else if (e.code === 'KeyM') { music.toggleMute(); updateSettingsUI(); }
+  else if (e.code === 'KeyJ') { if (achScreen.open) { achScreen.hide(); modalOpen = false; setOpenModal(null); } else if (!modalOpen) { achScreen.show(); modalOpen = true; setOpenModal('achievements'); } }
+  else if (e.code === 'KeyN') { if (!$('settings').classList.contains('hidden')) closeSettings(); else if (!modalOpen) openSettings(); }
   else if (e.code === 'KeyF') {
     if (modalOpen) return;
     if (nearbyPed) { launchAdGame(nearbyPed); }
@@ -659,4 +986,4 @@ window.addEventListener('resize', () => {
 });
 window.addEventListener('beforeunload', () => { if (started) { game.s.playerX = player.pos.x; game.s.playerZ = player.pos.z; } game.save(); });
 
-window.__casino = { game, world, customers, player, effects, pedMgr, editor, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };
+window.__casino = { game, world, customers, player, effects, pedMgr, editor, devPanel, tutorial, rebuildWorld, step: (secs) => { for (let t = 0; t < secs; t += 0.05) customers.update(0.05); } };

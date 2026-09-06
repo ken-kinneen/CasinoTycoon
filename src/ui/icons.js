@@ -53,6 +53,7 @@ export const ICONS = {
   arrow:     P('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   check:     P('<path d="M4 12l5 5L20 6"/>'),
   lock:      P('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  hammer:    P('<path d="M15 12l-8.5 8.5a2.12 2.12 0 0 1-3-3L12 9"/><path d="M17.64 4.36a3 3 0 0 0-4.24 0L12 5.78l5.66 5.66 1.42-1.42a3 3 0 0 0 0-4.24z"/>'),
   whale:     P('<path d="M3 13c2-5 8-7 14-5l4-3-1 5c1 3-1 6-5 7H8c-3 0-5-2-5-4z"/><circle cx="15" cy="11" r="1" fill="currentColor"/>'),
   beer:      P('<path d="M6 5h9v14H6z"/><path d="M15 8h3a2 2 0 0 1 0 6h-3"/><path d="M6 5c1-2 8-2 9 0"/>'),
   shades:    P('<path d="M2 10h20"/><path d="M4 10l1 5h5l1-4M19 10l-1 5h-5l-1-4"/>'),

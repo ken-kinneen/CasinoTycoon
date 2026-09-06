@@ -803,10 +803,18 @@ export class CasinoWorld {
     let az = -D / 2 + officeW + 2;
     const awardX = -W / 2 + 1.4;
     const placeAwardProp = (obj, name, w = 2) => { this.addProp(obj, name, awardX, az, w / 2, w / 2); az += w + 1.2; };
+    if (has('planter')) placeAwardProp(M.makePlanter(), 'Casino Planter', 1.2);
+    if (has('velvetrope')) placeAwardProp(M.makeVelvetRope(2), 'Velvet Rope', 1.8);
+    if (has('ornateurn')) placeAwardProp(M.makeOrnateUrn(), 'Ornate Urn', 1.0);
     if (has('toilet')) placeAwardProp(M.makeToilet(), 'Gold Toilet', 1.8);
     if (has('selfstatue')) placeAwardProp(M.makeStatue('owner'), 'Owner Statue', 1.6);
+    if (has('palmtree')) placeAwardProp(M.makePalmTree(), 'Palm Tree', 1.6);
     if (has('statue')) placeAwardProp(M.makeStatue('rat'), 'Rat Statue', 1.6);
+    if (has('fireplace')) placeAwardProp(M.makeFireplace(def.id), 'Grand Fireplace', 2.2);
+    if (has('megaphone')) placeAwardProp(M.makeMegaphone(), 'Gold Megaphone', 1.2);
     if (has('tiger')) { const t = M.makeTiger(); placeAwardProp(t, 'Tiger', 3.0); this.animated.push({ type: 'tiger', obj: t, t: 0 }); }
+    if (has('chandelier')) { const ch = M.makeChandelier(1.0, true); ch.position.set(awardX + 3, H - 0.3, az); this.root.add(ch); }
+    if (has('aquarium')) { const aq = M.makeAquarium(3, 1.8, 1.0); placeAwardProp(aq, 'Exotic Aquarium', 3.0); }
     if (has('fountain')) { const f = M.makeFountain(); this.addProp(f, 'Fountain', 0, 0, 1.7, 1.7); this.animated.push({ type: 'fountain', obj: f, t: 0 }); }
     if (has('volcano')) { const v = M.makeVolcano(); this.addProp(v, 'Volcano', W / 2 - 5, -D / 4, 3, 3); this.animated.push({ type: 'volcano', obj: v, t: 0 }); }
     const initials = (game.s.playerName || 'Victor Vane').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3) || 'VV';
@@ -818,57 +826,53 @@ export class CasinoWorld {
       Math.abs(o.x - x) < o.hw + hw + 0.6 && Math.abs(o.z - z) < o.hd + hd + 0.6);
     const occupy = (x, z, hw, hd) => occupied.push({ x, z, hw, hd });
 
-    // Pre-register fountain and volcano so tables avoid them
     const hasFountain = has('fountain');
     if (hasFountain) occupy(0, 0, 2, 2);
     if (has('volcano')) occupy(W / 2 - 5, -D / 4, 3.5, 3.5);
     if (has('vip')) occupy(W / 2 - 4, -D / 2 + 4, 4, 3.5);
     if (has('bar') || has('buffet')) { const len = Math.min(7, D * 0.35); occupy(W / 2 - 1.3, -D / 2 + 2 + len / 2, 2, len / 2 + 1); }
 
-    const nTables = Math.round(st.tables);
+    // Floor layout is the source of truth — create meshes at saved positions
+    const floorLayout = (game.s.floorLayouts || {})[def.id];
+    const tableEntries = floorLayout?.tables || [];
+    const machineEntries = floorLayout?.machines || [];
     const marbleHalfW = def.id === 'duck' ? 2.0 : 2.5;
     const tableOffsetX = marbleHalfW + 2.5;
 
-    const tableZMin = -D / 2 + officeW + 3;
-    const tableZMax = D / 2 - 8;
-    const nLeft = Math.ceil(nTables / 2);
-    const nRight = nTables - nLeft;
-    const tableSpacing = 5.5;
+    const clampXZ = (x, z, pad = 2.5) => ({
+      x: Math.max(-W / 2 + pad, Math.min(W / 2 - pad, x)),
+      z: Math.max(-D / 2 + pad, Math.min(D / 2 - pad, z)),
+    });
 
     const TABLE_HW = 2.0, TABLE_HD = 1.6;
-    const placeTable = (x, z) => {
-      if (clashes(x, z, TABLE_HW, TABLE_HD)) {
-        for (let nudge = 1; nudge <= 8; nudge++) {
-          if (!clashes(x, z - nudge * 1.5, TABLE_HW, TABLE_HD)) { z -= nudge * 1.5; break; }
-          if (!clashes(x, z + nudge * 1.5, TABLE_HW, TABLE_HD)) { z += nudge * 1.5; break; }
-        }
-      }
-      if (z < tableZMin || z > tableZMax) return;
-      const t = M.makeDealerTable(P.felt, initials); t.position.set(x, 0.12, z); add(t);
+    const placeTableAt = (sx, sz, ry = 0) => {
+      const p = clampXZ(sx, sz, 3);
+      const x = p.x, z = p.z;
+      const t = M.makeDealerTable(P.felt, initials);
+      t.position.set(x, 0.12, z);
+      t.rotation.y = ry;
+      add(t);
       this.addCollider(x, z, 3.4, 2.6, true);
       occupy(x, z, TABLE_HW, TABLE_HD);
       const seats = [];
-      for (let s = 0; s < 3; s++) { const a = Math.PI * (0.25 + s * 0.25); seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95)); }
+      for (let s = 0; s < 3; s++) {
+        const a = Math.PI * (0.25 + s * 0.25) + ry;
+        seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95));
+      }
       seats.push(new THREE.Vector3(x - 2.2, 0, z + 0.9));
-      this.tables.push({ group: t, pos: new THREE.Vector3(x, 0, z), seats, dealerSpot: new THREE.Vector3(x, 0, z - 1.2), occupants: [], cash: 0, aisleZ: z + 2.6 });
+      this.tables.push({
+        group: t, pos: new THREE.Vector3(x, 0, z), seats,
+        dealerSpot: new THREE.Vector3(x, 0, z + 2.0),
+        occupants: [], cash: 0, aisleZ: z + 2.6,
+      });
     };
 
-    const layoutRow = (count, x) => {
-      const totalSpan = (count - 1) * tableSpacing;
-      const rowCenter = (tableZMin + tableZMax) / 2;
-      const z0 = rowCenter - totalSpan / 2;
-      for (let i = 0; i < count; i++) {
-        const z = count === 1 ? rowCenter : z0 + i * tableSpacing;
-        placeTable(x, z);
-      }
-    };
-    if (nLeft > 0) layoutRow(nLeft, -tableOffsetX);
-    if (nRight > 0) layoutRow(nRight, tableOffsetX);
+    for (const s of tableEntries) placeTableAt(s.x, s.z, s.ry || 0);
 
     // dealer zone removed — tables are now interacted with via the click/info panel
     if (has('roulette')) {
       const ROUL_HW = 1.2, ROUL_HD = 2.0;
-      let rx = -tableOffsetX - 4.5, rz = (tableZMin + tableZMax) / 2;
+      let rx = -tableOffsetX - 4.5, rz = 0;
       if (clashes(rx, rz, ROUL_HW, ROUL_HD)) {
         for (let nudge = 1; nudge <= 10; nudge++) {
           if (!clashes(rx, rz + nudge * 2, ROUL_HW, ROUL_HD)) { rz += nudge * 2; break; }
@@ -876,107 +880,30 @@ export class CasinoWorld {
         }
       }
       rx = Math.max(-W / 2 + 3, rx);
-      rz = Math.max(tableZMin, Math.min(rz, tableZMax));
       const r = M.makeRouletteTable(); r.rotation.y = Math.PI / 2;
       this.addProp(r, 'Roulette', rx, rz, ROUL_HW, ROUL_HD);
       occupy(rx, rz, ROUL_HW, ROUL_HD);
       this.animated.push({ type: 'wheel', obj: r.userData.wheel });
     }
 
-    // --- SLOT PODS: small clusters of 2-3 against walls and in sections ---
-    const nMachines = Math.round(st.machines);
-    const podSize = tier === 0 ? 2 : 3;
-    const podLen = podSize * 1.2;
-    const podGap = 1.6;
-    const pods = [];
-
-    // LEFT WALL pods (below office): machines face inward
-    const leftX = -W / 2 + wallPad;
-    const leftZStart = -D / 2 + officeW + 2;
-    const leftZEnd = D / 2 - 5;
-    const leftSpan = leftZEnd - leftZStart;
-    const leftN = Math.max(1, Math.floor(leftSpan / (podLen + podGap)));
-    const leftStep = leftSpan / leftN;
-    for (let p = 0; p < leftN; p++)
-      pods.push({ x: leftX, z: leftZStart + p * leftStep + podLen / 2, face: Math.PI / 2, wall: 'left' });
-
-    // BACK WALL pods: machines face forward
-    const backZ = -D / 2 + wallPad;
-    const backXStart = -W / 2 + officeW + 1.5;
-    const backXEnd = W / 2 - (has('bar') || has('buffet') ? 3.5 : 2);
-    const backSpan = backXEnd - backXStart;
-    const backN = Math.max(1, Math.floor(backSpan / (podLen + podGap)));
-    const backStep = backSpan / backN;
-    for (let p = 0; p < backN; p++)
-      pods.push({ x: backXStart + p * backStep + podLen / 2, z: backZ, face: 0, wall: 'back' });
-
-    // RIGHT WALL pods: machines face inward (skip bar area)
-    const rightX = W / 2 - wallPad;
-    const barEnd = has('bar') || has('buffet') ? -D / 2 + Math.min(7, D * 0.35) + 3 : -D / 2 + 2;
-    const rightZStart = barEnd + 1;
-    const rightZEnd = D / 2 - 5;
-    const rightSpan = rightZEnd - rightZStart;
-    const rightN = Math.max(0, Math.floor(rightSpan / (podLen + podGap)));
-    const rightStep = rightN > 0 ? rightSpan / rightN : 0;
-    for (let p = 0; p < rightN; p++)
-      pods.push({ x: rightX, z: rightZStart + p * rightStep + podLen / 2, face: -Math.PI / 2, wall: 'right' });
-
-    // INTERIOR pods for overflow (larger casinos with many machines)
-    if (nMachines > pods.length * podSize) {
-      const intXStart = -W / 2 + officeW + 3;
-      const intXEnd = W / 2 - 5;
-      const intZ1 = -D / 2 + 5;
-      const intZ2 = D / 2 - 10;
-      const intCols = Math.max(1, Math.floor((intXEnd - intXStart) / 5.5));
-      const intRows = Math.max(1, Math.floor((intZ2 - intZ1) / 4.5));
-      for (let r = 0; r < intRows; r++) {
-        for (let c = 0; c < intCols; c++) {
-          const ix = intXStart + (c + 0.5) * (intXEnd - intXStart) / intCols;
-          const iz = intZ1 + (r + 0.5) * (intZ2 - intZ1) / intRows;
-          if (Math.abs(ix) < tableOffsetX + 3 && Math.abs(iz) < 4) continue;
-          pods.push({ x: ix, z: iz, face: (c % 2) ? Math.PI : 0, wall: 'interior' });
-        }
-      }
-    }
-
-    // Place machines into pods (2-3 per pod with a separator at each end)
-    let idx = 0;
-    for (const pod of pods) {
-      if (idx >= nMachines) break;
-      const count = Math.min(podSize, nMachines - idx);
-      const isVert = pod.wall === 'left' || pod.wall === 'right';
-      for (let i = 0; i < count; i++, idx++) {
-        const m = M.makeSlotMachine(idx);
-        let mx, mz;
-        if (isVert) {
-          mx = pod.x;
-          mz = pod.z + i * 1.2;
-          m.rotation.y = pod.face;
-        } else {
-          mx = pod.x + i * 1.2;
-          mz = pod.z;
-          m.rotation.y = pod.face;
-        }
-        m.position.set(mx, 0.12, mz); add(m);
-        const useOffset = pod.wall === 'left' ? 0.95 : pod.wall === 'right' ? -0.95 : pod.face === 0 ? 0.95 : -0.95;
-        const useX = isVert ? mx + useOffset : mx;
-        const useZ = isVert ? mz : mz + useOffset;
-        this.machines.push({ group: m, pos: new THREE.Vector3(mx, 0, mz), usePos: new THREE.Vector3(useX, 0, useZ), aisleZ: isVert ? mz : mz + useOffset * 2, occupant: null, cash: 0 });
-      }
-      // separator: a planter or rope at each end of the pod
-      const sepMat = tier > 0 ? gold : chrome;
-      if (isVert) {
-        const sz1 = pod.z - 0.8, sz2 = pod.z + (count - 1) * 1.2 + 0.8;
-        add(M.cyl(0.15, 0.18, 0.04, sepMat, pod.x, 0.14, sz1, 10));
-        add(M.cyl(0.15, 0.18, 0.04, sepMat, pod.x, 0.14, sz2, 10));
-      } else {
-        const sx1 = pod.x - 0.8, sx2 = pod.x + (count - 1) * 1.2 + 0.8;
-        add(M.cyl(0.15, 0.18, 0.04, sepMat, sx1, 0.14, pod.z, 10));
-        add(M.cyl(0.15, 0.18, 0.04, sepMat, sx2, 0.14, pod.z, 10));
-      }
-      // collider for the pod
-      if (isVert) this.addCollider(pod.x, pod.z + (count - 1) * 0.6, 1.4, count * 1.2 + 0.4, true);
-      else this.addCollider(pod.x + (count - 1) * 0.6, pod.z, count * 1.2 + 0.4, 1.4, true);
+    // --- SLOT MACHINES: one mesh per layout entry at its saved position ---
+    for (let i = 0; i < machineEntries.length; i++) {
+      const s = machineEntries[i];
+      const p = clampXZ(s.x, s.z, 1.5);
+      const ry = s.ry || 0;
+      const m = M.makeSlotMachine(i);
+      m.position.set(p.x, 0.12, p.z);
+      m.rotation.y = ry;
+      add(m);
+      this.addCollider(p.x, p.z, 1.2, 1.2, true);
+      const useX = p.x + Math.sin(ry) * 0.95;
+      const useZ = p.z + Math.cos(ry) * 0.95;
+      this.machines.push({
+        group: m, pos: new THREE.Vector3(p.x, 0, p.z),
+        usePos: new THREE.Vector3(useX, 0, useZ),
+        aisleZ: useZ, occupant: null, cash: 0,
+      });
+      occupy(p.x, p.z, 0.6, 0.6);
     }
     this.backAisleZ = -D / 2 + 2;
 

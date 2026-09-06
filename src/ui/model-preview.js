@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import * as M from '../world/models.js';
 import * as T from '../engine/textures.js';
-import { makeBouncer } from '../world/people.js';
+import { makeBouncer, makeOwner } from '../world/people.js';
 import { CASINOS } from '../data/casinos.js';
+import { COSMETICS } from '../data/skills.js';
 
 function makeCasinoBuilding(index) {
   const def = CASINOS[index];
@@ -104,7 +105,81 @@ const BUILDERS = {
   traincart: () => M.makeTrainCart(),
   bigchip: () => M.makeSlotChip(),
   exitsign: () => M.makeExitSign(),
+  chandelier: () => M.makeChandelier(0.8, false),
+  aquarium: () => M.makeAquarium(2, 1.2, 0.8),
+  palmtree: () => M.makePalmTree(),
+  ornateurn: () => M.makeOrnateUrn(),
+  velvetrope: () => M.makeVelvetRope(2),
+  planter: () => M.makePlanter(),
+  megaphone: () => M.makeMegaphone(),
+  fireplace: () => M.makeFireplace(),
 };
+
+/**
+ * Render a single-cosmetic owner preview: build an owner with only that one
+ * cosmetic key equipped, so just that item is visible on the base model.
+ */
+function makeOwnerCosmetic(skillId, level) {
+  const skills = { sleight: 0, back: 0, poker: 0, tongue: 0, feet: 0 };
+  skills[skillId] = level;
+  const key = `${skillId}_${level}`;
+  const c = COSMETICS.find(x => x.key === key);
+  const wardrobe = {};
+  if (c) wardrobe[c.slot] = key;
+  return makeOwner(skills, wardrobe);
+}
+
+/** Owner wearing a single cosmetic key (achievement or skill). */
+function makeOwnerFromCosmeticKey(cosmeticKey) {
+  const skills = { sleight: 0, back: 0, poker: 0, tongue: 0, feet: 0 };
+  const c = COSMETICS.find(x => x.key === cosmeticKey);
+  const wardrobe = {};
+  if (c) {
+    wardrobe[c.slot] = cosmeticKey;
+    if (c.source !== 'achievement' && c.level) skills[c.source] = c.level;
+  }
+  return makeOwner(skills, wardrobe);
+}
+
+const SLOT_FOCUS = {
+  hat:     { y: 2.05, fov: 22, dist: 2.2 },
+  glasses: { y: 1.81, fov: 18, dist: 2.0 },
+  smoking: { y: 1.72, fov: 20, dist: 2.0 },
+  neck:    { y: 1.32, fov: 22, dist: 2.2 },
+  torso:   { y: 1.1,  fov: 32, dist: 2.8 },
+  hands:   { y: 0.65, fov: 24, dist: 2.2 },
+  waist:   { y: 0.75, fov: 26, dist: 2.4 },
+  held:    { y: 0.5,  fov: 32, dist: 3.0 },
+  shoes:   { y: 0.1,  fov: 22, dist: 2.2 },
+};
+
+function buildCosmeticScene(builderFn, slot) {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x302838);
+  const model = builderFn();
+  stripLights(model);
+  const pivot = new THREE.Group();
+  pivot.add(model);
+  scene.add(pivot);
+
+  const focus = SLOT_FOCUS[slot] || { y: 1.0, fov: 30, dist: 3.0 };
+  const cam = new THREE.PerspectiveCamera(focus.fov, 1, 0.1, 100);
+  cam.position.set(0, focus.y, focus.dist);
+  cam.lookAt(0, focus.y, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.8);
+  dir.position.set(3, 5, 4);
+  scene.add(dir);
+  const rim = new THREE.DirectionalLight(0xffc880, 0.7);
+  rim.position.set(-2, 1, -3);
+  scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xaabbff, 0.4);
+  fill.position.set(-1, 3, 2);
+  scene.add(fill);
+
+  return { scene, cam, pivot };
+}
 
 function makePlaceholder() {
   const g = new THREE.Group();
@@ -196,7 +271,14 @@ function buildScene(builderFn) {
 
 function getScene(key) {
   if (sceneCache.has(key)) return sceneCache.get(key);
-  const builderFn = key === '__placeholder__' ? makePlaceholder : BUILDERS[key];
+  let builderFn = null;
+  if (key === '__placeholder__') builderFn = makePlaceholder;
+  else if (key.startsWith('__cosmetic_key__')) {
+    const cosmeticKey = key.slice('__cosmetic_key__'.length);
+    builderFn = () => makeOwnerFromCosmeticKey(cosmeticKey);
+  } else if (BUILDERS[key]) {
+    builderFn = BUILDERS[key];
+  }
   if (!builderFn) return null;
   const entry = buildScene(builderFn);
   sceneCache.set(key, entry);
@@ -218,9 +300,61 @@ export function renderPreviewFrame(modelKey, canvas, angle) {
   ctx.drawImage(r.domElement, 0, 0);
 }
 
+/** Render a model snapshot scaled to fit any canvas size. */
+export function renderPreviewSnapshot(modelKey, canvas, angle) {
+  const entry = getScene(modelKey);
+  if (!entry) return;
+  const r = getRenderer();
+  entry.pivot.rotation.y = angle;
+  r.render(entry.scene, entry.cam);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(r.domElement, 0, 0, SIZE, SIZE, 0, 0, canvas.width, canvas.height);
+}
+
 export function resolveModelKey(key) {
   if (key && BUILDERS[key]) return key;
+  if (key && COSMETICS.some(c => c.key === key)) return `__cosmetic_key__${key}`;
   return '__placeholder__';
+}
+
+/**
+ * Render a cosmetic preview zoomed into the relevant body slot.
+ */
+export function renderCosmeticPreview(skillId, level, canvas, angle) {
+  const cosmeticKey = `${skillId}_${level}`;
+  const c = COSMETICS.find(x => x.key === cosmeticKey);
+  const slot = c ? c.slot : 'coat';
+  const cacheKey = `__cz__${cosmeticKey}`;
+  let entry = sceneCache.get(cacheKey);
+  if (!entry) {
+    entry = buildCosmeticScene(() => makeOwnerCosmetic(skillId, level), slot);
+    sceneCache.set(cacheKey, entry);
+  }
+  const r = getRenderer();
+  entry.pivot.rotation.y = angle;
+  r.render(entry.scene, entry.cam);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(r.domElement, 0, 0, SIZE, SIZE, 0, 0, canvas.width, canvas.height);
+}
+
+/** Render owner wearing a specific cosmetic key, zoomed to its slot. */
+export function renderCosmeticKeyPreview(cosmeticKey, canvas, angle) {
+  const c = COSMETICS.find(x => x.key === cosmeticKey);
+  const slot = c ? c.slot : 'coat';
+  const cacheKey = `__cz_key__${cosmeticKey}`;
+  let entry = sceneCache.get(cacheKey);
+  if (!entry) {
+    entry = buildCosmeticScene(() => makeOwnerFromCosmeticKey(cosmeticKey), slot);
+    sceneCache.set(cacheKey, entry);
+  }
+  const r = getRenderer();
+  entry.pivot.rotation.y = angle;
+  r.render(entry.scene, entry.cam);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(r.domElement, 0, 0, SIZE, SIZE, 0, 0, canvas.width, canvas.height);
 }
 
 export { SIZE, CSS_SIZE, ROTATION_SPEED };

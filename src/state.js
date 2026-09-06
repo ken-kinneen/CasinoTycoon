@@ -1,9 +1,10 @@
 import { CASINOS, CUSTOMER_TYPES } from './data/casinos.js';
 import { AD_UPGRADES, CASINO_UPGRADES, AWARDS } from './data/upgrades.js';
-import { SKILLS, SKILL_COSTS } from './data/skills.js';
+import { SKILLS, SKILL_COSTS, COSMETICS, COSMETIC_SLOTS } from './data/skills.js';
 import { ACHIEVEMENTS } from './data/achievements.js';
 
 const SAVE_KEY = 'casino-tycoon-save-v1';
+const SLOTS_KEY = 'casino-tycoon-save-slots';
 
 // Stats that every casino/skill/upgrade can touch, with the player-side defaults.
 const PLAYER_BASE = {
@@ -55,10 +56,14 @@ function freshState() {
     playTime: 0,
     won: false,
     achievements: [],           // ids of unlocked achievements
-    achItems: [],               // model keys earned from achievements
+    achItems: [],               // model keys earned from achievements (placeables)
+    equippedItems: [],          // model keys currently displayed in the world
+    achCosmetics: [],           // wearable cosmetic keys earned from achievements
     playerName: 'Victor Vane',
     casinoNames: {},           // { duck: 'My Casino', ... } — overrides per casino
     floorLayouts: {},          // { duck: { machines: [...], tables: [...] }, ... } — custom positions
+    machineInventory: { duck: [], rat: [], diablo: [] }, // unplaced 'machine' | 'table' per casino
+    wardrobe: {},              // { hat: 'poker_5', glasses: 'poker_2', ... } — equipped cosmetic per slot
     lighting: { bloom: 20, exposure: 85, grain: 12, vignette: 45 },
     godMode: false,
     perfStats: false,
@@ -66,6 +71,8 @@ function freshState() {
     openModal: null,           // 'settings' | 'help' | 'ledger:tab' | null
     playerX: null,             // saved player position (null = use default)
     playerZ: null,
+    tutorialStep: 0,           // current tutorial step (0 = intro, 7 = done)
+    tutorialComplete: false,   // true once tutorial is finished or skipped
   };
 }
 
@@ -102,7 +109,15 @@ class GameState {
         this.s.casinoUpgrades = { ...freshState().casinoUpgrades, ...(data.casinoUpgrades || {}) };
         this.s.casinoNames = { ...freshState().casinoNames, ...(data.casinoNames || {}) };
         this.s.floorLayouts = { ...freshState().floorLayouts, ...(data.floorLayouts || {}) };
+        this.s.machineInventory = { ...freshState().machineInventory, ...(data.machineInventory || {}) };
+        this.s.wardrobe = { ...freshState().wardrobe, ...(data.wardrobe || {}) };
         this.s.lighting = { ...freshState().lighting, ...(data.lighting || {}) };
+        if (!this.s.equippedItems) {
+          this.s.equippedItems = [...(this.s.achItems || [])];
+        }
+        if (!this.s.achCosmetics) this.s.achCosmetics = [];
+        // Always reconcile: owned upgrades − placed floor items = inventory
+        this.reconcileMachineInventory();
       }
     } catch (e) { this.s = freshState(); }
   }
@@ -139,16 +154,91 @@ class GameState {
     return out;
   }
 
+  /** Count of machines/tables physically placed on the current casino floor. */
+  placedCount(type, casinoId) {
+    const cid = casinoId || this.casinoDef.id;
+    const layout = (this.s.floorLayouts || {})[cid];
+    if (!layout) return 0;
+    if (type === 'machine') return (layout.machines || []).length;
+    if (type === 'table') return (layout.tables || []).length;
+    return 0;
+  }
+
+  machineInventoryFor(casinoId) {
+    const cid = casinoId || this.casinoDef.id;
+    if (!this.s.machineInventory) this.s.machineInventory = { duck: [], rat: [], diablo: [] };
+    if (!this.s.machineInventory[cid]) this.s.machineInventory[cid] = [];
+    return this.s.machineInventory[cid];
+  }
+
+  /** Total machines/tables owned via upgrades (placed + inventory). */
+  ownedSpawnCount(type, casinoId) {
+    const cid = casinoId || this.casinoDef.id;
+    let n = 0;
+    for (const u of CASINO_UPGRADES[cid] || []) {
+      if (!this.s.casinoUpgrades[cid]?.includes(u.id) || !u.spawns) continue;
+      if (u.spawns.type === type) n += u.spawns.count;
+    }
+    return n;
+  }
+
+  /** Push spawn items into inventory when buying a machine/table upgrade. */
+  addSpawnsToInventory(u, casinoId) {
+    if (!u.spawns) return;
+    const inv = this.machineInventoryFor(casinoId);
+    for (let i = 0; i < u.spawns.count; i++) inv.push(u.spawns.type);
+  }
+
+  /** Take one item from inventory. Returns type or null. */
+  takeFromInventory(type, casinoId) {
+    const inv = this.machineInventoryFor(casinoId);
+    const idx = inv.indexOf(type);
+    if (idx === -1) return null;
+    inv.splice(idx, 1);
+    return type;
+  }
+
+  /** Return an item to inventory (e.g. cancel place). */
+  returnToInventory(type, casinoId) {
+    this.machineInventoryFor(casinoId).push(type);
+  }
+
+  /** Rebuild inventory so owned - placed = unplaced. Recovers lost items. */
+  reconcileMachineInventory() {
+    if (!this.s.machineInventory) this.s.machineInventory = { duck: [], rat: [], diablo: [] };
+    for (const cid of Object.keys(CASINO_UPGRADES)) {
+      const needM = Math.max(0, this.ownedSpawnCount('machine', cid) - this.placedCount('machine', cid));
+      const needT = Math.max(0, this.ownedSpawnCount('table', cid) - this.placedCount('table', cid));
+      this.s.machineInventory[cid] = [
+        ...Array(needM).fill('machine'),
+        ...Array(needT).fill('table'),
+      ];
+    }
+  }
+
+  /** @deprecated use reconcileMachineInventory */
+  _migrateMachineInventory() { this.reconcileMachineInventory(); }
+
   computeStats(extraEffects = []) {
     const base = { ...PLAYER_BASE, ...this.casinoDef.base };
     const adds = {}, muls = {};
     for (const e of this.activeEffects(extraEffects)) {
+      // machines/tables come from the floor, never from upgrade effects
+      if (e.stat === 'machines' || e.stat === 'tables') continue;
       if (e.add !== undefined) adds[e.stat] = (adds[e.stat] || 0) + e.add;
       if (e.mul !== undefined) muls[e.stat] = (muls[e.stat] || 1) * e.mul;
     }
     const st = {};
     for (const k of Object.keys(base)) {
       st[k] = (base[k] + (adds[k] || 0)) * (muls[k] || 1);
+    }
+    // Floor is the source of truth for physical equipment
+    st.machines = this.placedCount('machine');
+    st.tables = this.placedCount('table');
+    // Hypothetical previews: extraEffects may include machines/tables for shop deltas
+    for (const e of extraEffects) {
+      if (e.stat === 'machines' && e.add) st.machines += e.add;
+      if (e.stat === 'tables' && e.add) st.tables += e.add;
     }
     st.heat = Math.max(0, Math.min(100, st.heat));
     st.sharpness = Math.max(0.05, Math.min(1, st.sharpness));
@@ -159,6 +249,7 @@ class GameState {
 
   recompute() {
     this.stats = this.computeStats();
+    this.refreshWardrobe();
     this.emit('stats', this.stats);
   }
 
@@ -173,6 +264,14 @@ class GameState {
       deltas.push({ key: k, from: now[k], to: then[k] });
     }
     return deltas;
+  }
+
+  /** Preview for a spawn upgrade (machines go to inventory, not floor yet). */
+  previewSpawns(u) {
+    if (!u.spawns) return [];
+    const key = u.spawns.type === 'machine' ? 'machines' : 'tables';
+    const from = this.stats[key];
+    return [{ key, from, to: from + u.spawns.count, inventory: true }];
   }
 
   // ---- money ------------------------------------------------------------
@@ -202,6 +301,8 @@ class GameState {
     const u = CASINO_UPGRADES[cid].find(x => x.id === id);
     if (!u || this.s.casinoUpgrades[cid].includes(id) || !this.spend(u.cost)) return false;
     this.s.casinoUpgrades[cid].push(id);
+    this.addSpawnsToInventory(u, cid);
+    this.reconcileMachineInventory();
     this.afterPurchase(u);
     return true;
   }
@@ -252,7 +353,13 @@ class GameState {
     const newly = [];
     for (const a of ACHIEVEMENTS) {
       if (this.s.achievements.includes(a.id)) continue;
-      try { if (a.check(this.s, this.stats)) newly.push(a); } catch (_) {}
+      if (a.requires && !this.s.achievements.includes(a.requires)) continue;
+      try {
+        if (a.check(this.s, this.stats)) {
+          // Claim immediately so chained achievements can unlock in the same pass
+          if (this.claimAchievement(a.id)) newly.push(a);
+        }
+      } catch (_) {}
     }
     return newly;
   }
@@ -260,16 +367,131 @@ class GameState {
     if (this.s.achievements.includes(id)) return null;
     const a = ACHIEVEMENTS.find(x => x.id === id);
     if (!a) return null;
+    if (a.requires && !this.s.achievements.includes(a.requires)) return null;
     this.s.achievements.push(id);
     if (a.reward) this.addMoney(a.reward, 'achievement');
     if (a.item) {
       if (!this.s.achItems) this.s.achItems = [];
       if (!this.s.achItems.includes(a.item)) this.s.achItems.push(a.item);
+      if (!this.s.equippedItems) this.s.equippedItems = [];
+      if (!this.s.equippedItems.includes(a.item)) this.s.equippedItems.push(a.item);
+    }
+    if (a.cosmetic) {
+      if (!this.s.achCosmetics) this.s.achCosmetics = [];
+      if (!this.s.achCosmetics.includes(a.cosmetic)) this.s.achCosmetics.push(a.cosmetic);
+      // Auto-equip into its wardrobe slot
+      const c = COSMETICS.find(x => x.key === a.cosmetic);
+      if (c) {
+        this.s.wardrobe[c.slot] = a.cosmetic;
+        this.emit('wardrobe', a.cosmetic);
+      }
     }
     this.recompute();
     this.save();
     this.emit('achievement', a);
     return a;
+  }
+
+  equipItem(key) {
+    if (!this.s.equippedItems) this.s.equippedItems = [];
+    if (!this.s.achItems || !this.s.achItems.includes(key)) return false;
+    if (this.s.equippedItems.includes(key)) return false;
+    this.s.equippedItems.push(key);
+    this.save();
+    this.emit('equip', key);
+    return true;
+  }
+  unequipItem(key) {
+    if (!this.s.equippedItems) return false;
+    const idx = this.s.equippedItems.indexOf(key);
+    if (idx === -1) return false;
+    this.s.equippedItems.splice(idx, 1);
+    this.save();
+    this.emit('equip', key);
+    return true;
+  }
+  isEquipped(key) {
+    return (this.s.equippedItems || []).includes(key);
+  }
+
+  // ---- wardrobe (slot-based cosmetics) ----------------------------------------
+
+  /** Whether the player owns a cosmetic (skill-unlocked or achievement-granted). */
+  ownsCosmetic(key) {
+    const c = COSMETICS.find(x => x.key === key);
+    if (!c) return false;
+    if (c.source === 'achievement') {
+      return (this.s.achCosmetics || []).includes(key);
+    }
+    return (this.s.skills[c.source] || 0) >= (c.level || 0);
+  }
+
+  /** Auto-equip the best unlocked cosmetic for each slot (used on first load / skill up). */
+  _autoEquipSlot(slot) {
+    const candidates = COSMETICS.filter(c => c.slot === slot && this.ownsCosmetic(c.key));
+    if (!candidates.length) { delete this.s.wardrobe[slot]; return; }
+    const current = this.s.wardrobe[slot];
+    if (current && candidates.some(c => c.key === current)) return;
+    // Prefer highest skill level; achievement items (no level) win ties by being last
+    const best = candidates.reduce((a, b) => (b.level || 0) > (a.level || 0) ? b : a);
+    this.s.wardrobe[slot] = best.key;
+  }
+
+  /** Called after skill changes — auto-equip newly unlocked slots without overriding player choices. */
+  refreshWardrobe() {
+    const OLD_TO_NEW = { wrist: 'hands', sleeve: 'hands', arms: 'torso', coat: 'torso', cape: 'torso', belt: 'waist', hip: 'waist' };
+    for (const [old, neu] of Object.entries(OLD_TO_NEW)) {
+      if (this.s.wardrobe[old]) {
+        if (!this.s.wardrobe[neu]) this.s.wardrobe[neu] = this.s.wardrobe[old];
+        delete this.s.wardrobe[old];
+      }
+    }
+    for (const slot of Object.keys(COSMETIC_SLOTS)) {
+      const current = this.s.wardrobe[slot];
+      if (current) {
+        if (this.ownsCosmetic(current)) continue;
+        delete this.s.wardrobe[slot];
+      }
+      this._autoEquipSlot(slot);
+    }
+    this.save();
+  }
+
+  /** Get the cosmetic key equipped in a slot, or null. */
+  getSlot(slot) { return this.s.wardrobe[slot] || null; }
+
+  /** Equip a cosmetic into its slot (replaces whatever was there). */
+  equipCosmetic(key) {
+    const c = COSMETICS.find(x => x.key === key);
+    if (!c) return false;
+    if (!this.ownsCosmetic(key)) return false;
+    this.s.wardrobe[c.slot] = key;
+    this.save();
+    this.emit('wardrobe', key);
+    return true;
+  }
+
+  /** Unequip a slot (remove cosmetic, leave slot empty). */
+  unequipSlot(slot) {
+    delete this.s.wardrobe[slot];
+    this.save();
+    this.emit('wardrobe', slot);
+  }
+
+  /** Check if a cosmetic key is currently worn. */
+  isWorn(key) {
+    const c = COSMETICS.find(x => x.key === key);
+    if (!c) return false;
+    return this.s.wardrobe[c.slot] === key;
+  }
+
+  /** Build the wardrobe map for makeOwner(): { hat: 'poker_5', glasses: null, ... } */
+  wardrobeMap() {
+    const map = {};
+    for (const slot of Object.keys(COSMETIC_SLOTS)) {
+      map[slot] = this.s.wardrobe[slot] || null;
+    }
+    return map;
   }
 
   // helpers for the UI
@@ -284,10 +506,67 @@ class GameState {
     for (const u of AD_UPGRADES) if (u.model === key && s.adUpgrades.includes(u.id)) return true;
     for (const u of CASINO_UPGRADES[cid]) if (u.model === key && s.casinoUpgrades[cid].includes(u.id)) return true;
     for (const a of AWARDS) if (a.model === key && s.awards.includes(a.id)) return true;
-    if (s.achItems && s.achItems.includes(key)) return true;
+    if (s.equippedItems && s.equippedItems.includes(key)) return true;
     return false;
+  }
+
+  // ---- save slots (dev testing) -----------------------------------------------
+  static _loadSlots() {
+    try { return JSON.parse(localStorage.getItem(SLOTS_KEY)) || {}; } catch { return {}; }
+  }
+  static _saveSlots(slots) {
+    try { localStorage.setItem(SLOTS_KEY, JSON.stringify(slots)); } catch {}
+  }
+  listSlots() {
+    const slots = GameState._loadSlots();
+    return Object.entries(slots)
+      .map(([id, sl]) => ({ id, name: sl.name, date: sl.date, casino: sl.casino, money: sl.money, playerName: sl.playerName }))
+      .sort((a, b) => b.date - a.date);
+  }
+  saveToSlot(name) {
+    const slots = GameState._loadSlots();
+    const id = 'slot_' + Date.now();
+    this.save();
+    slots[id] = {
+      name,
+      date: Date.now(),
+      casino: this.s.casino,
+      money: this.s.money,
+      playerName: this.s.playerName,
+      state: JSON.parse(JSON.stringify(this.s)),
+    };
+    GameState._saveSlots(slots);
+    return id;
+  }
+  loadFromSlot(id) {
+    const slots = GameState._loadSlots();
+    const sl = slots[id];
+    if (!sl || !sl.state) return false;
+    this.s = { ...freshState(), ...sl.state };
+      this.s.skills = { ...freshState().skills, ...(sl.state.skills || {}) };
+      this.s.casinoUpgrades = { ...freshState().casinoUpgrades, ...(sl.state.casinoUpgrades || {}) };
+      this.s.casinoNames = { ...freshState().casinoNames, ...(sl.state.casinoNames || {}) };
+      this.s.floorLayouts = { ...freshState().floorLayouts, ...(sl.state.floorLayouts || {}) };
+      this.s.machineInventory = { ...freshState().machineInventory, ...(sl.state.machineInventory || {}) };
+      this.s.wardrobe = { ...freshState().wardrobe, ...(sl.state.wardrobe || {}) };
+      this.s.lighting = { ...freshState().lighting, ...(sl.state.lighting || {}) };
+      if (!sl.state.machineInventory) this.reconcileMachineInventory();
+      else this.reconcileMachineInventory();
+    this.recompute();
+    this.save();
+    this.emit('reset');
+    return true;
+  }
+  deleteSlot(id) {
+    const slots = GameState._loadSlots();
+    delete slots[id];
+    GameState._saveSlots(slots);
+  }
+  renameSlot(id, name) {
+    const slots = GameState._loadSlots();
+    if (slots[id]) { slots[id].name = name; GameState._saveSlots(slots); }
   }
 }
 
 export const game = new GameState();
-export { CASINOS, CUSTOMER_TYPES, AD_UPGRADES, CASINO_UPGRADES, AWARDS, SKILLS, SKILL_COSTS, ACHIEVEMENTS };
+export { CASINOS, CUSTOMER_TYPES, AD_UPGRADES, CASINO_UPGRADES, AWARDS, SKILLS, SKILL_COSTS, ACHIEVEMENTS, COSMETICS, COSMETIC_SLOTS };

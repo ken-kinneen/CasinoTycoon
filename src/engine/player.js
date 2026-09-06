@@ -62,7 +62,7 @@ export class Player {
 
   rebuildModel() {
     if (this.model) this.scene.remove(this.model);
-    this.model = makeOwner(this.game.s.skills);
+    this.model = makeOwner(this.game.s.skills, this.game.wardrobeMap());
     this.model.position.copy(this.pos);
     this.scene.add(this.model);
   }

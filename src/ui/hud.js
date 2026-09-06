@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { STAT_META, CASINO_STAT_KEYS, PLAYER_STAT_KEYS, ACHIEVEMENTS } from '../state.js';
+import { STAT_META, CASINO_STAT_KEYS, PLAYER_STAT_KEYS, ACHIEVEMENTS, SKILLS, SKILL_COSTS, COSMETICS, COSMETIC_SLOTS } from '../state.js';
 import { fmtMoney } from '../minigames/base.js';
 import { ICONS, icon } from './icons.js';
 import { makeOwner } from '../world/people.js';
+import { renderCosmeticPreview, renderCosmeticKeyPreview } from './model-preview.js';
 import * as M from '../world/models.js';
 import * as T from '../engine/textures.js';
 
@@ -32,9 +33,9 @@ export const STAT_ICON = { capacity: 'people', machines: 'machine', tables: 'car
 
 const MILESTONES = [
   { key: 'balance', label: 'Balance', icon: 'dollar', get: s => s.money, achIds: ['hoard_50k'], fmt: fmtMoney },
-  { key: 'earned', label: 'Lifetime Take', icon: 'dollar', get: s => s.lifetimeEarned, achIds: ['earn_1k', 'earn_5k', 'earn_25k', 'earn_100k', 'earn_500k'], fmt: fmtMoney },
-  { key: 'guests', label: 'Guests Served', icon: 'people', get: s => s.lifetimeCustomers, achIds: ['guests_10', 'guests_50', 'guests_200', 'guests_1000'], fmt: v => v.toLocaleString() },
-  { key: 'time', label: 'Time on Floor', icon: 'clock', get: s => s.playTime, achIds: ['time_10', 'time_30', 'time_60'], fmt: v => { const m = Math.floor(v / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; } },
+  { key: 'earned', label: 'Lifetime Take', icon: 'dollar', get: s => s.lifetimeEarned, achIds: ['earn_1k', 'earn_5k', 'high_roller_shades', 'earn_25k', 'earn_100k', 'diamond_eyes', 'earn_500k'], fmt: fmtMoney },
+  { key: 'guests', label: 'Guests Served', icon: 'people', get: s => s.lifetimeCustomers, achIds: ['guests_10', 'guests_50', 'street_cred', 'guests_200', 'guests_1000'], fmt: v => v.toLocaleString() },
+  { key: 'time', label: 'Time on Floor', icon: 'clock', get: s => s.playTime, achIds: ['time_10', 'floor_boss', 'time_30', 'time_60'], fmt: v => { const m = Math.floor(v / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; } },
 ];
 
 const ITEM_NAMES = { toilet: 'Gold Toilet', selfstatue: 'Your Statue', namelights: 'Name in Lights', tiger: 'Pet Tiger', fountain: 'Champagne Fountain' };
@@ -43,27 +44,33 @@ export class HUD {
   constructor(game, customers) {
     this.game = game; this.customers = customers;
     this.el = $('hud');
-    this.statsPanel = $('stats-panel');
+    this.wardrobePanel = $('wardrobe-panel');
     this.acc = 0;
     this.achAcc = 0;
     this.shownMoney = game.s.money;
     this._modelT = 0;
+    this._wardrobeTab = 'wardrobe';
+    this._wardrobeOpen = false;
+    
     const put = (id, name) => { const e = $(id); if (e) e.innerHTML = ICONS[name]; };
     put('ico-hopper', 'vault'); put('ico-guests', 'people'); put('ico-heat', 'flame');
-    put('ico-ledger', 'ledger'); put('ico-stats', 'stats'); put('ico-help', 'help'); put('ico-settings', 'gear'); put('ico-settings-music', 'music');
-    put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger'); put('ico-hot-arrange', 'gear');
+    put('ico-ledger', 'ledger'); put('ico-help', 'help'); put('ico-settings', 'gear'); put('ico-settings-music', 'music');
+    put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger'); put('ico-hot-arrange', 'hammer');
     document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = ICONS[e.dataset.ico]; });
     this._initModelPreview();
     this._initCasinoPreview();
+    this._initWardrobe();
     this.drawPortrait();
     this.buildCasinoModel();
     this.renderMilestones();
-    game.on('skill', () => this.drawPortrait());
+    game.on('skill', () => { this.drawPortrait(); if (this._wardrobeOpen) this.renderWardrobe(); });
+    game.on('wardrobe', () => { this.drawPortrait(); if (this._wardrobeOpen) { this._drawWardrobePreview(); this.renderWardrobe(); } });
     game.on('casino', () => this.buildCasinoModel());
     game.on('money', () => this.renderMilestones());
     game.on('achievement', (a) => {
       toast(`Achievement: ${a.name}${a.reward ? ` (+${fmtMoney(a.reward)})` : ''}`, 'good', 5000);
       quip(a.hint);
+      if (this._wardrobeOpen) this.renderWardrobe();
     });
   }
   show() { this.el.classList.remove('hidden'); }
@@ -101,6 +108,10 @@ export class HUD {
         const rewards = [];
         if (a.reward) rewards.push(`<span class="pp-tip-cash">+${fmtMoney(a.reward)}</span>`);
         if (a.item) rewards.push(`<span class="pp-tip-item">${icon('star')}${ITEM_NAMES[a.item] || a.item}</span>`);
+        if (a.cosmetic) {
+          const cos = COSMETICS.find(c => c.key === a.cosmetic);
+          rewards.push(`<span class="pp-tip-item">${icon('star')}${cos ? cos.name : a.cosmetic}</span>`);
+        }
         tip.innerHTML = `<div class="pp-tip-name">${a.name}</div>` +
           `<div class="pp-tip-hint">${a.hint}</div>` +
           (rewards.length ? `<div class="pp-tip-rewards">${rewards.join('')}</div>` : '');
@@ -111,6 +122,262 @@ export class HUD {
         if (tip) tip.remove();
       };
     });
+  }
+
+  // ---- wardrobe panel --------------------------------------------------------
+  _initWardrobe() {
+    const closeWd = () => { this.toggleWardrobe(false); if (this.onWardrobeHide) this.onWardrobeHide(); };
+    $('wd-close').onclick = closeWd;
+    this.wardrobePanel.addEventListener('click', (e) => {
+      if (e.target === this.wardrobePanel) closeWd();
+    });
+    this._initWardrobePreview();
+    const body = $('wd-body');
+    if (body) body.addEventListener('scroll', () => this._hideCosmeticTip(), { passive: true });
+    for (const tab of this.wardrobePanel.querySelectorAll('.wd-tab')) {
+      tab.onclick = () => {
+        this._wardrobeTab = tab.dataset.wdTab;
+        for (const t of this.wardrobePanel.querySelectorAll('.wd-tab')) t.classList.toggle('active', t === tab);
+        $('wd-tab-wardrobe').classList.toggle('hidden', this._wardrobeTab !== 'wardrobe');
+        $('wd-tab-stats').classList.toggle('hidden', this._wardrobeTab !== 'stats');
+        const isWd = this._wardrobeTab === 'wardrobe';
+        $('wd-heading').textContent = isWd ? 'Cosmetics' : 'Statistics';
+        $('wd-intro').textContent = isWd
+          ? 'One item per slot. Unlock more by levelling skills.'
+          : 'Your casino empire at a glance.';
+        if (!isWd) this.renderStats();
+      };
+    }
+  }
+
+  _initWardrobePreview() {
+    const c = $('wd-player-model'); if (!c) return;
+    this._wdPvCanvas = c;
+    this._wdPvRenderer = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true });
+    this._wdPvRenderer.setSize(c.width, c.height);
+    this._wdPvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this._wdPvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this._wdPvRenderer.toneMappingExposure = 1.0;
+    this._wdPvScene = new THREE.Scene();
+    this._wdPvScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.3);
+    dl.position.set(3, 6, 4);
+    this._wdPvScene.add(dl);
+    this._wdPvCamera = new THREE.PerspectiveCamera(30, c.width / c.height, 0.1, 100);
+    this._wdPvCamera.position.set(0, 1.0, 4.8);
+    this._wdPvCamera.lookAt(0, 0.8, 0);
+    this._wdPvModel = null;
+    this._wdPvAngle = 0;
+  }
+
+  _drawWardrobePreview() {
+    if (!this._wdPvRenderer) return;
+    if (this._wdPvModel) this._wdPvScene.remove(this._wdPvModel);
+    const m = makeOwner(this.game.s.skills, this.game.wardrobeMap());
+    this._wdPvScene.add(m);
+    this._wdPvModel = m;
+  }
+
+  _tickWardrobePreview() {
+    if (!this._wdPvRenderer || !this._wdPvModel) return;
+    this._wdPvAngle += 0.008;
+    this._wdPvModel.rotation.y = this._wdPvAngle;
+    this._wdPvRenderer.render(this._wdPvScene, this._wdPvCamera);
+  }
+
+  _renderRailStats() {
+    const el = $('wd-rail-stats'); if (!el) return;
+    const s = this.game.s;
+    el.innerHTML = MILESTONES.map(m => {
+      const val = m.key === 'balance' ? this.shownMoney : m.get(s);
+      return `<div class="sb-stat-row">`
+        + `<span class="ico-slot">${ICONS[m.icon] || ''}</span>`
+        + `<span class="sb-stat-label">${m.label}</span>`
+        + `<span class="sb-stat-val">${m.fmt(val)}</span>`
+        + `</div>`;
+    }).join('');
+  }
+
+  toggleWardrobe(force, opts = {}) {
+    const show = force !== undefined ? force : !this._wardrobeOpen;
+    this._wardrobeOpen = show;
+    this._highlightCosmetic = show ? (opts.highlight || null) : null;
+    this.wardrobePanel.classList.toggle('hidden', !show);
+    if (!show) this._hideCosmeticTip();
+    if (show) {
+      $('wd-player-name').textContent = this.game.s.casinoName ? `${this.game.s.casinoName}` : 'VICTOR VANE';
+      this._drawWardrobePreview();
+      this._renderRailStats();
+      // Always land on cosmetics tab when deep-linking to an item
+      if (this._highlightCosmetic) {
+        this._wardrobeTab = 'wardrobe';
+        for (const t of this.wardrobePanel.querySelectorAll('.wd-tab')) {
+          t.classList.toggle('active', t.dataset.wdTab === 'wardrobe');
+        }
+        $('wd-tab-wardrobe').classList.remove('hidden');
+        $('wd-tab-stats').classList.add('hidden');
+        $('wd-heading').textContent = 'Cosmetics';
+        $('wd-intro').textContent = 'One item per slot. Unlock more by levelling skills.';
+      }
+      this.renderWardrobe();
+      if (this._wardrobeTab === 'stats') this.renderStats();
+    }
+  }
+
+  renderWardrobe() {
+    const el = $('wd-tab-wardrobe');
+    if (!el) return;
+    this._hideCosmeticTip();
+    const g = this.game;
+
+    const SLOT_ORDER = ['hat', 'glasses', 'smoking', 'neck', 'torso', 'hands', 'waist', 'held', 'shoes'];
+
+    let html = '<div class="wd-slot-list">';
+
+    for (const slotId of SLOT_ORDER) {
+      const slotDef = COSMETIC_SLOTS[slotId];
+      if (!slotDef) continue;
+      const items = COSMETICS.filter(c => c.slot === slotId);
+      if (!items.length) continue;
+      const equipped = g.getSlot(slotId);
+
+      html += `<div class="wd-slot-row">`;
+      html += `<div class="wd-slot-label">`;
+      html += `<span class="wd-slot-name">${slotDef.label}</span>`;
+      html += `</div>`;
+      html += `<div class="wd-items">`;
+
+      for (const item of items) {
+        const unlocked = g.ownsCosmetic ? g.ownsCosmetic(item.key) : ((g.s.skills[item.source] || 0) >= (item.level || 0));
+        const isEquipped = equipped === item.key;
+
+        html += `<div class="wd-card ${unlocked ? '' : 'locked'} ${isEquipped ? 'equipped' : ''} ${this._highlightCosmetic === item.key ? 'highlighted' : ''}" data-wd-key="${item.key}" data-wd-slot="${slotId}">`;
+        if (item.source === 'achievement') {
+          html += `<div class="wd-card-preview"><canvas class="wd-pv-canvas" data-wd-cosmetic="${item.key}" width="128" height="128"></canvas></div>`;
+        } else {
+          html += `<div class="wd-card-preview"><canvas class="wd-pv-canvas" data-wd-skill="${item.source}" data-wd-level="${item.level}" width="128" height="128"></canvas></div>`;
+        }
+        if (isEquipped) {
+          html += `<span class="wd-card-badge wd-badge-worn">WORN</span>`;
+        } else if (!unlocked) {
+          html += `<span class="wd-card-badge wd-badge-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>`;
+        }
+        html += `<div class="wd-card-label"><div class="wd-card-name">${item.name}</div></div>`;
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
+
+    // clicking a card = equip/unequip
+    for (const card of el.querySelectorAll('.wd-card:not(.locked)')) {
+      card.onclick = () => {
+        if (card.classList.contains('equipped')) g.unequipSlot(card.dataset.wdSlot);
+        else g.equipCosmetic(card.dataset.wdKey);
+      };
+    }
+
+    // hover tooltips — fixed so they aren't clipped by card overflow
+    for (const card of el.querySelectorAll('.wd-card')) {
+      const key = card.dataset.wdKey;
+      const cosmetic = COSMETICS.find(c => c.key === key);
+      if (!cosmetic) continue;
+      card.onmouseenter = () => this._showCosmeticTip(card, cosmetic);
+      card.onmouseleave = () => this._hideCosmeticTip();
+    }
+
+    this._snapshotCardPreviews(el);
+
+    if (this._highlightCosmetic) {
+      const target = el.querySelector(`.wd-card[data-wd-key="${this._highlightCosmetic}"]`);
+      if (target) {
+        requestAnimationFrame(() => {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        });
+      }
+    }
+  }
+
+  _hideCosmeticTip() {
+    if (this._cosmeticTip) {
+      this._cosmeticTip.remove();
+      this._cosmeticTip = null;
+    }
+  }
+
+  _showCosmeticTip(card, cosmetic) {
+    this._hideCosmeticTip();
+    const unlocked = !card.classList.contains('locked');
+    const worn = card.classList.contains('equipped');
+
+    let unlockHtml = '';
+    if (!unlocked) {
+      if (cosmetic.source === 'achievement') {
+        const ach = ACHIEVEMENTS.find(a => a.cosmetic === cosmetic.key);
+        if (ach) {
+          unlockHtml =
+            `<div class="wd-tip-how">`
+            + `<div class="wd-tip-how-label">How to unlock</div>`
+            + `<div class="wd-tip-how-title">${ach.name}</div>`
+            + `<div class="wd-tip-how-hint">${ach.hint}</div>`
+            + `</div>`;
+        } else {
+          unlockHtml = `<div class="wd-tip-how"><div class="wd-tip-how-label">How to unlock</div><div class="wd-tip-how-hint">Earn via achievements</div></div>`;
+        }
+      } else {
+        const sk = SKILLS.find(s => s.id === cosmetic.source);
+        const skillName = sk ? sk.name : cosmetic.source;
+        const lvl = cosmetic.level || 1;
+        const cost = SKILL_COSTS[lvl - 1];
+        const cur = this.game.s.skills[cosmetic.source] || 0;
+        unlockHtml =
+          `<div class="wd-tip-how">`
+          + `<div class="wd-tip-how-label">How to unlock</div>`
+          + `<div class="wd-tip-how-title">${skillName} · Level ${lvl}</div>`
+          + `<div class="wd-tip-how-hint">Train in Upgrades → My Skills`
+          + (cost != null ? ` · ${fmtMoney(cost)}` : '')
+          + `</div>`
+          + `<div class="wd-tip-progress">Currently level ${cur} / ${lvl}</div>`
+          + `</div>`;
+      }
+    } else {
+      unlockHtml = `<div class="wd-tip-status">${worn ? 'Currently worn' : 'Owned — click to wear'}</div>`;
+    }
+
+    const tip = document.createElement('div');
+    tip.className = 'wd-card-tip' + (unlocked ? '' : ' locked');
+    tip.innerHTML =
+      `<div class="wd-card-tip-name">${cosmetic.name}</div>`
+      + `<div class="wd-card-tip-desc">${cosmetic.desc}</div>`
+      + unlockHtml;
+
+    document.body.appendChild(tip);
+    this._cosmeticTip = tip;
+
+    const r = card.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    let top = r.top - th - 10;
+    if (top < 8) top = r.bottom + 10;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  _snapshotCardPreviews(container) {
+    const canvases = container.querySelectorAll('.wd-pv-canvas');
+    const angle = Math.PI * 0.15;
+    for (const c of canvases) {
+      const { wdSkill, wdLevel, wdCosmetic } = c.dataset;
+      if (wdCosmetic) {
+        renderCosmeticKeyPreview(wdCosmetic, c, angle);
+      } else if (wdSkill && wdLevel) {
+        renderCosmeticPreview(wdSkill, parseInt(wdLevel, 10), c, angle);
+      }
+    }
   }
 
   /** Set up the mini Three.js scene that renders the owner model. */
@@ -330,7 +597,7 @@ export class HUD {
     if (!this._pvScene) return;
     if (this._pvModel) { this._pvScene.remove(this._pvModel); this._pvModel = null; }
     const sk = this.game.s.skills;
-    this._pvModel = makeOwner(sk);
+    this._pvModel = makeOwner(sk, this.game.wardrobeMap());
     this._pvModel.position.set(0, 0, 0);
     this._pvModel.rotation.y = 0.3;
     this._pvScene.add(this._pvModel);
@@ -352,6 +619,9 @@ export class HUD {
   update(dt) {
     this._renderPreview(dt);
     this._renderCasinoPreview(dt);
+    if (this._wardrobeOpen) {
+      this._tickWardrobePreview();
+    }
     const target = this.game.s.money;
     if (Math.abs(target - this.shownMoney) > 0.5) {
       this.shownMoney += (target - this.shownMoney) * Math.min(1, dt * 6);
@@ -379,13 +649,12 @@ export class HUD {
     const heatEl = $('hud-heat');
     heatEl.textContent = `${Math.round(st.heat)}%`;
     heatEl.className = `sb-stat-val${st.heat > 60 ? ' danger' : st.heat > 30 ? ' warn' : ''}`;
-    if (!this.statsPanel.classList.contains('hidden')) this.renderStats();
+    if (this._wardrobeOpen && this._wardrobeTab === 'stats') this.renderStats();
     this.achAcc += 0.15;
     if (this.achAcc >= 2) {
       this.achAcc = 0;
       this.renderMilestones();
-      const newly = this.game.checkAchievements();
-      for (const a of newly) this.game.claimAchievement(a.id);
+      this.game.checkAchievements();
     }
   }
 
@@ -396,10 +665,7 @@ export class HUD {
   }
 
   toggleStats(force) {
-    const p = this.statsPanel;
-    const show = force !== undefined ? force : p.classList.contains('hidden');
-    p.classList.toggle('hidden', !show);
-    if (show) this.renderStats();
+    this.toggleWardrobe(force);
   }
 
   renderStats() {
