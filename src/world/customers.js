@@ -136,7 +136,6 @@ export class CustomerManager {
 
     // ---- per customer -------------------------------------------------------------
     const spendPerSec = st.spendPerMin / 60 * st.houseEdge;
-    let totalHopper = 0;
     for (let i = this.customers.length - 1; i >= 0; i--) {
       const c = this.customers[i];
       const g = c.group;
@@ -176,10 +175,9 @@ export class CustomerManager {
       } else if (c.state === 'using') {
         c.useTimer -= dt;
         c.walkT += dt;
-        const hopper = c.machine || c.table;
-        const room = st.hopperCap - hopper.cash;
         const spend = spendPerSec * c.info.spend * dt;
-        if (room > 0) { const s = Math.min(room, spend); hopper.cash += s; this.game.s.machineCash += s; c.spent += s; }
+        this.game.addMoney(spend, 'guest');
+        c.spent += spend;
         if (c.machine) {
           u.legL.rotation.x = -Math.PI / 2;
           u.legR.rotation.x = -Math.PI / 2;
@@ -197,18 +195,8 @@ export class CustomerManager {
         this.customers.splice(i, 1);
       }
     }
-    // update hopper visuals + total
-    for (const m of w.machines) { totalHopper += m.cash; m.group.userData.cash.scale.y = Math.max(0.05, Math.min(1, m.cash / st.hopperCap) * 3); }
-    for (const t of w.tables) totalHopper += t.cash || 0;
-    this.game.s.machineCash = totalHopper;
-  }
-
-  /** Take everything from the hoppers (used after a vault crack banks it). */
-  drainHoppers(amount) {
-    let remaining = amount;
-    const all = [...this.world.machines, ...this.world.tables];
-    for (const h of all) { const take = Math.min(h.cash || 0, remaining); h.cash = (h.cash || 0) - take; remaining -= take; if (remaining <= 0) break; }
-    this.game.s.machineCash = Math.max(0, this.game.s.machineCash - (amount - remaining));
+    // keep slot-machine candle visuals pumping (no hopper logic needed)
+    for (const m of w.machines) { m.group.userData.cash.scale.y = 0.05; }
   }
 
   /** Customers currently sitting at tables, for the dealer game. */

@@ -33,9 +33,9 @@ export const ACHIEVEMENTS = [
   },
   {
     id: 'first_vault',
-    name: 'Cracked It',
-    hint: 'Vault crack to bank your hopper cash',
-    icon: 'safe',
+    name: 'First Earnings',
+    hint: 'Earn $50 from your guests',
+    icon: 'dollar',
     reward: 100,
     item: 'planter',
     check: s => s.lifetimeEarned >= 50,

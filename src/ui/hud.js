@@ -9,8 +9,15 @@ import * as T from '../engine/textures.js';
 
 const $ = id => document.getElementById(id);
 
-// ---- toasts & the owner's speech bubble ----------------------------------------
+// ---- toasts & quips → unified message system ----------------------------------------
+import { showMessage as _showMsg, isMessagesEnabled } from './messages.js';
+
 export function toast(msg, kind = '', ms = 3500) {
+  if (isMessagesEnabled()) {
+    const from = kind === 'bad' ? 'system' : 'casino';
+    _showMsg(msg, { from, duration: ms });
+    return;
+  }
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = msg;
@@ -21,6 +28,10 @@ export function toast(msg, kind = '', ms = 3500) {
 }
 let bubbleTimer = null;
 export function quip(msg, ms = 5000) {
+  if (isMessagesEnabled()) {
+    _showMsg(msg, { from: 'player', duration: ms });
+    return;
+  }
   const b = $('bubble'); if (!b) return;
   $('bubble-text').textContent = msg;
   b.classList.remove('hidden');
@@ -41,6 +52,7 @@ const MILESTONES = [
 const ITEM_NAMES = { toilet: 'Gold Toilet', selfstatue: 'Your Statue', namelights: 'Name in Lights', tiger: 'Pet Tiger', fountain: 'Champagne Fountain' };
 
 export class HUD {
+  static portraitDataURL = null;
   constructor(game, customers) {
     this.game = game; this.customers = customers;
     this.el = $('hud');
@@ -53,9 +65,9 @@ export class HUD {
     this._wardrobeOpen = false;
     
     const put = (id, name) => { const e = $(id); if (e) e.innerHTML = ICONS[name]; };
-    put('ico-hopper', 'vault'); put('ico-guests', 'people'); put('ico-heat', 'flame');
+    put('ico-guests', 'people'); put('ico-heat', 'flame');
     put('ico-ledger', 'ledger'); put('ico-help', 'help'); put('ico-settings', 'gear'); put('ico-settings-music', 'music');
-    put('ico-hot-ads', 'card'); put('ico-hot-cash', 'safe'); put('ico-hot-deal', 'cards'); put('ico-hot-ledger', 'ledger'); put('ico-hot-arrange', 'hammer');
+    put('ico-hot-ads', 'card'); put('ico-hot-deal', 'cards'); put('ico-hot-roulette', 'chip'); put('ico-hot-ledger', 'ledger'); put('ico-hot-arrange', 'hammer');
     document.querySelectorAll('[data-ico]').forEach(e => { e.innerHTML = ICONS[e.dataset.ico]; });
     this._initModelPreview();
     this._initCasinoPreview();
@@ -68,8 +80,9 @@ export class HUD {
     game.on('casino', () => this.buildCasinoModel());
     game.on('money', () => this.renderMilestones());
     game.on('achievement', (a) => {
-      toast(`Achievement: ${a.name}${a.reward ? ` (+${fmtMoney(a.reward)})` : ''}`, 'good', 5000);
-      quip(a.hint);
+      const rewardText = a.reward ? ` — ${fmtMoney(a.reward)}` : '';
+      _showMsg(`${a.name}${rewardText}`, { from: 'trophy', duration: 5000 });
+      _showMsg(a.hint, { from: 'player', duration: 5000 });
       if (this._wardrobeOpen) this.renderWardrobe();
     });
   }
@@ -384,7 +397,7 @@ export class HUD {
   _initModelPreview() {
     const c = $('player-model'); if (!c) return;
     this._pvCanvas = c;
-    this._pvRenderer = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true });
+    this._pvRenderer = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true, preserveDrawingBuffer: true });
     this._pvRenderer.setSize(c.width, c.height);
     this._pvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this._pvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -614,6 +627,25 @@ export class HUD {
     if (u && u.head) u.head.rotation.y = Math.sin(this._modelT * 0.7) * 0.2;
     this._applyReactions(dt);
     this._pvRenderer.render(this._pvScene, this._pvCam);
+
+    this._portraitAcc = (this._portraitAcc || 0) + dt;
+    if (this._portraitAcc > 2 || !HUD.portraitDataURL) {
+      this._portraitAcc = 0;
+      try {
+        const src = this._pvCanvas;
+        const sz = 128;
+        if (!this._portraitBuf) {
+          this._portraitBuf = document.createElement('canvas');
+          this._portraitBuf.width = sz; this._portraitBuf.height = sz;
+        }
+        const ctx = this._portraitBuf.getContext('2d');
+        const sx = src.width * 0.1, sy = 0;
+        const sw = src.width * 0.8, sh = src.width * 0.8;
+        ctx.clearRect(0, 0, sz, sz);
+        ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sz, sz);
+        HUD.portraitDataURL = this._portraitBuf.toDataURL('image/png');
+      } catch { /* cross-origin or context lost */ }
+    }
   }
 
   update(dt) {
@@ -634,11 +666,6 @@ export class HUD {
     this.acc = 0;
     const g = this.game, st = g.stats;
     $('hud-casino').textContent = g.casinoDisplayName().replace(', Las Vegas', '');
-    const cap = st.hopperCap * (st.machines + st.tables);
-    const full = this.customers.world.machines.filter(m => m.cash >= st.hopperCap - 0.5).length;
-    const hv = $('hud-hopper');
-    hv.textContent = full ? `${fmtMoney(g.s.machineCash)} · ${full} FULL` : fmtMoney(g.s.machineCash);
-    hv.className = `sb-stat-val${full ? ' full-blink' : g.s.machineCash / cap > 0.7 ? ' warn' : ''}`;
     const totalSeats = this.customers.world.machines.length + this.customers.world.tables.reduce((a, t) => a + t.seats.length, 0);
     $('hud-guests').textContent = `${this.customers.count} / ${totalSeats}${this.customers.pending ? ` (+${this.customers.pending})` : ''}`;
     const types = { whale: 0, sharp: 0, drunk: 0 };
@@ -672,7 +699,7 @@ export class HUD {
     const g = this.game, st = g.stats;
     $('stats-casino').textContent = g.casinoDisplayName();
     const grid = (keys) => keys.map(k => `<div class="k">${icon(STAT_ICON[k] || 'star')}${STAT_META[k].label}</div><div class="v">${STAT_META[k].fmt(st[k])}</div>`).join('');
-    $('stats-casino-grid').innerHTML = grid(CASINO_STAT_KEYS) + `<div class="k">${icon('people')}Guests inside</div><div class="v">${this.customers.count}</div><div class="k">${icon('vault')}Cash in hoppers</div><div class="v">${fmtMoney(g.s.machineCash)}</div>`;
+    $('stats-casino-grid').innerHTML = grid(CASINO_STAT_KEYS) + `<div class="k">${icon('people')}Guests inside</div><div class="v">${this.customers.count}</div>`;
     $('stats-player-grid').innerHTML = grid(PLAYER_STAT_KEYS);
     const mins = Math.floor(g.s.playTime / 60);
     $('stats-life').innerHTML = `Lifetime take <b>${fmtMoney(g.s.lifetimeEarned)}</b> · Guests fleeced <b>${g.s.lifetimeCustomers}</b> · Time on the floor <b>${mins} min</b>`;

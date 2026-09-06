@@ -40,8 +40,6 @@ export const CASINOS = [
       houseEdge: 1.0,
       heat: 5,
       prestige: 0,
-      autoCollect: 0,
-      hopperCap: 300,
     },
   },
   {
@@ -68,8 +66,6 @@ export const CASINOS = [
       houseEdge: 1.05,
       heat: 10,
       prestige: 10,
-      autoCollect: 0,
-      hopperCap: 1000,
     },
   },
   {
@@ -96,8 +92,6 @@ export const CASINOS = [
       houseEdge: 1.1,
       heat: 15,
       prestige: 30,
-      autoCollect: 0,
-      hopperCap: 3000,
     },
   },
 ];

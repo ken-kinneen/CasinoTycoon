@@ -58,33 +58,41 @@ const b = await box(); const toPage = (x, y) => [b.x + x * b.width / 960, b.y + 
   await closeResult();
 }
 
-// ---- CASH RUN ----
-await page.evaluate(() => { const { world, game } = window.__casino; for (const m of world.machines) m.cash = 400; game.s.machineCash = world.machines.length * 400; });
-await page.keyboard.press('Digit2'); await page.waitForTimeout(400);
-await page.keyboard.press('KeyE');
-console.log('cash open:', await waitGame('stacks', 'Digit2'));
+// ---- BLACKJACK (was cash run) ----
 {
-  const safe = await page.evaluate(() => window.__activeGame.safe);
-  for (let k = 0; k < 5; k++) {
-    const s = await page.evaluate(() => { const g = window.__activeGame; const f = g.stacks.filter(s => !s.banked)[0]; return f ? { x: f.x, y: f.y } : null; });
-    if (!s) break;
-    await page.evaluate(() => { window.__activeGame.doorT = 0; });
-    const [sx, sy] = toPage(s.x, s.y); const [tx, ty] = toPage(safe.x + safe.w / 2, safe.y + safe.h / 2);
-    await page.mouse.move(sx, sy); await page.mouse.down();
-    for (let i = 1; i <= 8; i++) { await page.mouse.move(sx + (tx - sx) * i / 8, sy + (ty - sy) * i / 8); await page.waitForTimeout(22); }
-    if (k === 2) await page.screenshot({ path: `${OUT}/cash-drag.png` });
-    await page.mouse.up(); await page.waitForTimeout(90);
+  const seatForBJ = async () => page.evaluate(() => {
+    const { customers, world } = window.__casino;
+    const t = world.tables[0];
+    if (!t) return 'no tables';
+    if (customers.customers.length < 1) customers.queue(1);
+    const c = customers.customers[0];
+    if (c) {
+      if (c.machine) { c.machine.occupant = null; c.machine = null; }
+      if (!t.occupants.includes(c)) t.occupants.push(c);
+      c.table = t; c.seat = t.seats[0]; c.state = 'using'; c.useTimer = 600; c.path = [];
+      c.group.position.set(c.seat.x, c.group.position.y, c.seat.z);
+    }
+    return customers.tablePlayers().length;
+  });
+  await seatForBJ();
+  await page.keyboard.press('Digit2'); await page.waitForTimeout(400);
+  await page.keyboard.press('KeyE');
+  console.log('blackjack open:', await waitGame('phase', 'Digit2', seatForBJ));
+  // play: stand on every hand to finish quickly
+  for (let i = 0; i < 30; i++) {
+    const st = await page.evaluate(() => window.__activeGame ? { phase: window.__activeGame.phase } : null);
+    if (!st) break;
+    if (st.phase === 'player') { await page.keyboard.press('KeyS'); await page.waitForTimeout(300); }
+    else { await page.waitForTimeout(200); }
+    const done = await page.evaluate(() => !document.getElementById('result').classList.contains('hidden'));
+    if (done) break;
   }
-  await page.screenshot({ path: `${OUT}/cash-play.png` });
-  // door-shut state
-  await page.evaluate(() => { window.__activeGame.doorT = window.__activeGame.doorPeriod * 0.85; });
-  await page.waitForTimeout(150);
-  await page.screenshot({ path: `${OUT}/cash-locked.png` });
-  await page.evaluate(() => window.__activeGame && (window.__activeGame.timeLeft = 0.01));
+  await page.screenshot({ path: `${OUT}/blackjack-result.png` });
+  console.log('blackjack summary:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
   await closeResult();
 }
 
-// ---- DEALER ----
+// ---- ROULETTE (was dealer) ----
 const seatThem = async () => page.evaluate(() => {
   const { customers, world } = window.__casino;
   const t = world.tables[0];
@@ -109,10 +117,10 @@ const dealerOpen = await waitGame('phase', 'Digit3', seatThem);
 console.log('dealer open:', dealerOpen, 'players:', await page.evaluate(() => window.__casino.customers.tablePlayers().length));
 {
   await page.waitForTimeout(400);
-  await page.screenshot({ path: `${OUT}/dealer-intro.png` });
+  await page.screenshot({ path: `${OUT}/roulette-intro.png` });
   for (let i = 0; i < 100; i++) { if (await page.evaluate(() => window.__activeGame && window.__activeGame.phase === 'play')) break; await page.waitForTimeout(100); }
   await page.waitForTimeout(500);
-  await page.screenshot({ path: `${OUT}/dealer-play.png` });
+  await page.screenshot({ path: `${OUT}/roulette-play.png` });
   // land it inside the margin
   for (let i = 0; i < 600; i++) {
     const st = await page.evaluate(() => { const g = window.__activeGame; return g && g.phase === 'play' ? { n: g.number, t: g.current.target, m: g.current.margin } : null; });
@@ -121,10 +129,10 @@ console.log('dealer open:', dealerOpen, 'players:', await page.evaluate(() => wi
     await page.waitForTimeout(8);
   }
   await page.waitForTimeout(400);
-  await page.screenshot({ path: `${OUT}/dealer-result.png` });
+  await page.screenshot({ path: `${OUT}/roulette-result.png` });
   for (let i = 0; i < 80; i++) { if (await page.evaluate(() => !document.getElementById('result').classList.contains('hidden'))) break; await page.evaluate(() => { const g = window.__activeGame; if (g && g.phase === 'play') g.countdown = 0.02; }); await page.waitForTimeout(300); }
-  await page.screenshot({ path: `${OUT}/dealer-summary.png` });
-  console.log('dealer summary:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
+  await page.screenshot({ path: `${OUT}/roulette-summary.png` });
+  console.log('roulette summary:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
   await closeResult();
 }
 console.log('errors:', errors.length ? errors.slice(0, 8) : 'none');

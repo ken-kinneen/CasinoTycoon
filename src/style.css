@@ -136,6 +136,71 @@ kbd { display: inline-flex; align-items: center; justify-content: center; min-wi
 .toast.bad { border-left-color: var(--red); }
 @keyframes toastin { from { opacity: 0; transform: translateY(-8px); } }
 
+/* ---- unified message banner (top-center) ---------------------------------- */
+#message-banner { position: fixed; left: 50%; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; gap: 0; align-items: center; width: 480px; max-width: 96vw; pointer-events: none; z-index: 28; }
+
+/* individual message card */
+.msg-item { display: flex; align-items: stretch; gap: 0; background: rgba(12, 8, 20, 0.96); border: 1px solid rgba(255,255,255,0.06); border-radius: 0 0 10px 10px; width: 100%; backdrop-filter: blur(14px); box-shadow: 0 8px 32px rgba(0,0,0,0.7); animation: msg-slide 0.35s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; overflow: hidden; margin-bottom: 4px; }
+
+/* sender avatar — left column */
+.msg-avatar { width: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.04); }
+.msg-avatar-icon { display: flex; width: 22px; height: 22px; color: var(--dim); }
+.msg-avatar-icon svg { width: 100%; height: 100%; }
+
+/* player portrait avatar — much bigger */
+.msg-avatar-portrait { width: 72px; background: rgba(245,197,66,0.05); padding: 6px; }
+.msg-portrait-img { width: 100%; height: auto; aspect-ratio: 1; border-radius: 6px; display: block; image-rendering: auto; }
+.msg-avatar-icon-lg { width: 40px; height: 40px; color: var(--gold); }
+.msg-avatar-icon-lg svg { width: 100%; height: 100%; }
+
+/* message body — right side */
+.msg-body { flex: 1; padding: 10px 14px 10px 12px; min-width: 0; }
+.msg-sender { font: 700 9px var(--body); letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin-bottom: 3px; }
+.msg-content { font: 500 15px/1.4 var(--body); color: var(--text); }
+
+/* ---- stat message layout (icon · label · value) ---- */
+.msg-stat-icon { display: inline-flex; width: 15px; height: 15px; color: var(--gold); opacity: 0.5; vertical-align: -2px; margin-right: 5px; }
+.msg-stat-icon svg { width: 100%; height: 100%; }
+.msg-stat-label { color: var(--dim); font: 600 15px var(--body); }
+.msg-stat-val { font: 700 15px var(--body); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.msg-val-good { color: var(--green); }
+.msg-val-bad { color: var(--red); }
+
+/* ---- sender variants ---- */
+.msg-from-stat .msg-avatar-icon { color: var(--dim); }
+
+.msg-from-casino .msg-avatar { background: rgba(245,197,66,0.05); }
+.msg-from-casino .msg-avatar-icon { color: var(--gold); }
+.msg-from-casino .msg-sender { color: var(--gold); }
+
+.msg-from-player { border-color: rgba(245,197,66,0.15); }
+.msg-from-player .msg-avatar { border-right-color: rgba(245,197,66,0.08); }
+.msg-from-player .msg-sender { color: var(--gold); }
+.msg-from-player .msg-content { font: 600 16px/1.45 var(--body); color: var(--text); }
+
+.msg-from-inspect .msg-avatar { background: rgba(255,59,59,0.04); }
+.msg-from-inspect .msg-avatar-icon { color: var(--red); }
+.msg-from-inspect .msg-sender { color: var(--red); }
+
+.msg-from-trophy .msg-avatar { background: rgba(245,197,66,0.06); }
+.msg-from-trophy .msg-avatar-icon { color: var(--gold); }
+.msg-from-trophy .msg-sender { color: var(--gold); }
+
+.msg-from-tutorial .msg-avatar { background: rgba(56, 232, 255, 0.04); }
+.msg-from-tutorial .msg-avatar-icon { color: var(--cyan); }
+.msg-from-tutorial .msg-sender { color: var(--cyan); }
+
+.msg-from-system .msg-avatar-icon { color: var(--dim); }
+
+/* persistent messages (e.g. tutorial objectives) */
+.msg-persistent { border-color: rgba(56, 232, 255, 0.15); }
+.msg-hint { font: 500 12px/1.3 var(--body); color: var(--dim); margin-top: 3px; }
+
+/* fade out */
+.msg-item.msg-fade { opacity: 0; transform: translateY(-8px); transition: opacity 0.4s ease, transform 0.4s ease; }
+
+@keyframes msg-slide { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
+
 /* bottom center */
 .hud-bottom { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .prompt { display: flex; align-items: center; gap: 10px; background: var(--gold-grad); color: #2a1a04; padding: 8px 18px 8px 10px; border-radius: 6px; font: 20px var(--display); letter-spacing: 1.5px; box-shadow: 0 0 30px rgba(245,197,66,0.5), 0 6px 16px rgba(0,0,0,0.5); animation: pulse 1.2s infinite; pointer-events: auto; }

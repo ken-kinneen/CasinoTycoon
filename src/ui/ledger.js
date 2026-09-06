@@ -2,6 +2,7 @@
 import { STAT_META, CASINOS, AD_UPGRADES, CASINO_UPGRADES, SKILLS, SKILL_COSTS, CUSTOMER_TYPES } from '../state.js';
 import { fmtMoney } from '../minigames/base.js';
 import { quip, STAT_ICON } from './hud.js';
+import { showMessage, isMessagesEnabled } from './messages.js';
 import { icon } from './icons.js';
 import { renderPreviewFrame, resolveModelKey, SIZE as PREVIEW_PX, CSS_SIZE as PREVIEW_CSS, ROTATION_SPEED } from './model-preview.js';
 
@@ -9,8 +10,8 @@ const $ = id => document.getElementById(id);
 
 const BUY_QUIPS = ['Money well spent. Their money.', 'Every purchase is an investment in someone else\'s misery.', 'I\'m not a monster. I\'m a businessman. Same thing, better suits.', 'The books balance. Morally? Different books.', 'Sign here, here, and where it says "victim".', 'That\'s the sound of progress. And a little screaming.'];
 
-const MODEL_LABELS = {
-  machines: 'Goes to Build inventory', tables: 'Goes to Build inventory', roulette: 'Adds roulette table',
+  const MODEL_LABELS = {
+  machines: 'Goes to Build inventory', tables: 'Goes to Build inventory',
   bar: 'Adds bar', buffet: 'Adds buffet', atm: 'Adds ATM', bouncer: 'Adds bouncer',
   cart: 'Adds armored cart', vip: 'Adds VIP lounge', neon: 'Updates signage', carpet: 'New carpet',
   noclocks: 'Removes clocks', windows: 'Boards windows', vents: 'Adds AC vents',
@@ -243,15 +244,21 @@ export class Ledger {
     return wrap;
   }
 
-  _renderStarterChoice(body, afford) {
+  _renderStarterChoice(body, afford, mode) {
     const g = this.game;
     const cid = g.casinoDef.id;
-    const starters = CASINO_UPGRADES[cid].filter(u => u.tags && u.tags.includes('starter'));
 
-    $('ledger-heading').textContent = 'Choose Your First Machine';
-    $('ledger-intro').textContent = 'You have $200. You can only afford one. This is how it starts.';
+    const isBuyTable = mode === 'buy_table';
+    const targetId = isBuyTable ? 'd_roulette1' : 'd_slot1';
+    const starters = CASINO_UPGRADES[cid].filter(u => u.id === targetId);
 
-    // Hide the tab bar during starter choice
+    $('ledger-heading').textContent = isBuyTable
+      ? 'Your First Table'
+      : 'Time for Passive Income';
+    $('ledger-intro').textContent = isBuyTable
+      ? 'You have $200. Buy a roulette table — deal against your customers yourself.'
+      : 'Buy a slot machine. It earns money while you do other things.';
+
     $('ledger-tabs').style.display = 'none';
 
     const STARTER_INFO = {
@@ -281,7 +288,6 @@ export class Ledger {
       const card = document.createElement('div');
       card.className = 'starter-card ' + info.playstyleClass;
 
-      // Hero with 3D preview
       const hero = document.createElement('div');
       hero.className = 'starter-hero';
       const badge = document.createElement('div');
@@ -297,7 +303,6 @@ export class Ledger {
       hero.appendChild(badge);
       card.appendChild(hero);
 
-      // Body
       const bd = document.createElement('div');
       bd.className = 'starter-body';
       bd.innerHTML =
@@ -309,16 +314,16 @@ export class Ledger {
           info.pros.map(p => `<div class="starter-pro">${icon('check')} ${p}</div>`).join('') +
           info.cons.map(c => `<div class="starter-con">${icon('close')} ${c}</div>`).join('') +
         `</div>` +
-        `<button class="starter-buy${canBuy ? '' : ' disabled'}"${canBuy ? '' : ' disabled'}>${canBuy ? 'Choose This' : 'Too poor'}</button>`;
+        `<button class="starter-buy${canBuy ? '' : ' disabled'}"${canBuy ? '' : ' disabled'}>${canBuy ? 'Buy This' : 'Too poor'}</button>`;
       card.appendChild(bd);
 
       if (canBuy) {
         bd.querySelector('.starter-buy').onclick = () => {
           if (g.buyCasinoUpgrade(u.id)) {
             $('ledger-tabs').style.display = '';
-            quip(u.id === 'd_slot1'
-              ? 'A slot machine. One lever, infinite possibilities. Mostly bad ones.'
-              : 'A roulette table. Time to get my hands dirty.');
+            quip(isBuyTable
+              ? 'A roulette table. Time to get my hands dirty.'
+              : 'A slot machine. One lever, infinite possibilities. Mostly bad ones.');
             this.onChange && this.onChange(u);
           }
         };
@@ -340,9 +345,13 @@ export class Ledger {
 
     const afford = (cost) => g.godMode || g.s.money >= cost;
 
-    // During tutorial buy_machine step: show a special starter-choice screen
-    if (this.tab === 'casino' && !g.s.tutorialComplete && (g.s.tutorialStep === 1)) {
-      this._renderStarterChoice(body, afford);
+    // During tutorial buy_table step: show roulette only. During buy_slot: show slot only.
+    const tutStep = g.s.tutorialStep;
+    const inTutorial = !g.s.tutorialComplete;
+    if (this.tab === 'casino' && inTutorial && tutStep === 1) {
+      this._renderStarterChoice(body, afford, 'buy_table');
+    } else if (this.tab === 'casino' && inTutorial && tutStep === 7) {
+      this._renderStarterChoice(body, afford, 'buy_slot');
     } else if (this.tab === 'casino') {
       const list = CASINO_UPGRADES[g.casinoDef.id];
       $('ledger-intro').textContent = TAB_META.casino.intro(g, list, list.filter(u => g.ownsCasinoUpgrade(u.id)).length);
@@ -403,7 +412,7 @@ export class Ledger {
         const name = '<div class="cbc-name">' + g.casinoDisplayName(i) + '</div>';
         const tagline = '<div class="cbc-tagline">"' + c.tagline + '"</div>';
 
-        const allKeys = ['capacity', 'machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'hopperCap', 'autoCollect', 'prestige', 'heat'];
+        const allKeys = ['capacity', 'machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'prestige', 'heat'];
         const validKeys = allKeys.filter(k => b[k] !== undefined && STAT_META[k]);
         const half = Math.ceil(validKeys.length / 2);
         const col = (keys) => keys.map(k => '<div class="k">' + icon(STAT_ICON[k] || 'star') + STAT_META[k].label + '</div><div class="v">' + STAT_META[k].fmt(b[k]) + '</div>').join('');

@@ -1,398 +1,360 @@
-// Vault crack: watch the keypad light up a sequence, then enter it from memory.
-// 4 rounds: 3 → 4 → 5 → 6 digits. Bank more the further you get.
-import { MiniGame, GW, GH, fmtMoney, PAL } from './base.js';
+// Blackjack: simple 21 card game. Dealer deals cards, player hits or stands.
+// Beat the dealer's hand without going over 21.
+import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
+import { TYPE_INFO, DIFFICULTY_TIERS } from '../world/customers.js';
 import * as sfx from '../audio/sfx.js';
 
-const ROUNDS = 4;
-const START_LEN = 3;
-const PRESS_DUR = 0.35;
-const GAP_DUR = 0.18;
-const PAUSE_BEFORE = 0.5;
-const PAUSE_AFTER = 0.4;
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const RANK_VALUES = { A: 11, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 10, Q: 10, K: 10 };
 
-// 3×4 phone-style keypad: 1-9, then bottom row is [empty, 0, empty]
-const PAD_LAYOUT = [
-  [1, 2, 3],
-  [4, 5, 6],
-  [7, 8, 9],
-  [-1, 0, -1],
-];
-const PAD_COLS = 3;
-const PAD_ROWS = 4;
-const PAD_BTN = 80;
-const PAD_GAP = 10;
-const PAD_W = PAD_COLS * PAD_BTN + (PAD_COLS - 1) * PAD_GAP;
-const PAD_H = PAD_ROWS * PAD_BTN + (PAD_ROWS - 1) * PAD_GAP;
-const PAD_X = GW / 2 - PAD_W / 2;
-const PAD_Y = 180;
-
-function padPos(digit) {
-  for (let r = 0; r < PAD_ROWS; r++)
-    for (let c = 0; c < PAD_COLS; c++)
-      if (PAD_LAYOUT[r][c] === digit) return { bx: PAD_X + c * (PAD_BTN + PAD_GAP), by: PAD_Y + r * (PAD_BTN + PAD_GAP) };
-  return null;
+function makeDeck() {
+  const d = [];
+  for (const s of SUITS) for (const r of RANKS) d.push({ rank: r, suit: s });
+  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+  return d;
 }
 
-function genSequence(len) {
-  const seq = [];
-  for (let i = 0; i < len; i++) seq.push(Math.floor(Math.random() * 10));
-  return seq;
+function handValue(cards) {
+  let total = 0, aces = 0;
+  for (const c of cards) { total += RANK_VALUES[c.rank]; if (c.rank === 'A') aces++; }
+  while (total > 21 && aces > 0) { total -= 10; aces--; }
+  return total;
 }
+
+function isRed(card) { return card.suit === '♥' || card.suit === '♦'; }
+
+const QUIPS = {
+  win: ['"Blackjack. The house always wins."', '"Better luck next time."', '"Twenty-one. The sweetest number."'],
+  lose: ['"...Congratulations." *grinds teeth*', '"Enjoy it. I know where you live."', '"A fluke. Deal again."'],
+  push: ['"A tie. How boring."', '"Push. Nobody wins. The house still wins."'],
+  blackjack: ['"Natural blackjack. The cards love me."', '"Twenty-one on the deal. Textbook."'],
+};
 
 export class CashRunGame extends MiniGame {
-  constructor(game) {
-    super('VAULT CRACK');
+  constructor(game, players) {
+    super('BLACKJACK');
     this.game = game;
-    this.total = game.s.machineCash;
-    this.round = 0;
-    this.roundsCleared = 0;
-    this.phase = 'ready';
-    this.phaseT = 0;
-    this.sequence = [];
-    this.input = [];
-    this.showIdx = -1;
-    this.showPressT = 0;
-    this.msg = '';
-    this.msgT = 0;
-    this.msgGood = true;
-    this.lockPulse = 0;
+    this.players = players.slice(0, 3);
+    this.hand = 0;
+    this.results = [];
+    this.won = 0;
+    this.lost = 0;
+    this.deck = makeDeck();
+    this.phase = 'intro';
+    this.phaseT = 1.6;
+    this.chips = [];
     this.shakeT = 0;
-    this.sparks = [];
-    this.inputFlash = {};
-    this.startRound();
+    this.playerCards = [];
+    this.dealerCards = [];
+    this.setupHand();
   }
 
-  seqLen() { return START_LEN + this.round - 1; }
-  get perRoundValue() { return this.total / ROUNDS; }
-
-  showDuration() {
-    const n = this.sequence.length;
-    return PAUSE_BEFORE + n * PRESS_DUR + (n - 1) * GAP_DUR + PAUSE_AFTER;
+  draw1() {
+    if (this.deck.length < 10) this.deck = makeDeck();
+    return this.deck.pop();
   }
 
-  startRound() {
-    this.round++;
-    this.sequence = genSequence(this.seqLen());
-    this.input = [];
-    this.phase = 'show';
-    this.phaseT = 0;
-    this.showIdx = -1;
-    this.showPressT = 0;
-    this.inputFlash = {};
-  }
-
-  bankAmount() { return Math.floor(this.roundsCleared * this.perRoundValue); }
-
-  burst(x, y, color, n = 18) {
+  burst(x, y, color, n = 20) {
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 80 + Math.random() * 260;
-      this.sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.4 + Math.random() * 0.4, max: 0.8, color });
+      const a = Math.random() * Math.PI * 2, s = 90 + Math.random() * 260;
+      this.chips.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 10, life: 0.7 + Math.random() * 0.5, max: 1.2, color });
     }
   }
 
-  activeShowDigit() {
-    if (this.phase !== 'show') return -1;
-    const elapsed = this.phaseT - PAUSE_BEFORE;
-    if (elapsed < 0) return -1;
-    const step = PRESS_DUR + GAP_DUR;
-    const idx = Math.floor(elapsed / step);
-    if (idx >= this.sequence.length) return -1;
-    const within = elapsed - idx * step;
-    if (within > PRESS_DUR) return -1;
-    return idx;
-  }
+  setupHand() {
+    const st = this.game.stats;
+    const c = this.players[this.hand];
+    const info = TYPE_INFO[c.type];
+    const diff = c.difficulty || 'medium';
+    const tier = DIFFICULTY_TIERS[diff];
+    const betScale = Math.sqrt(st.spendPerMin / 40);
+    this.current = {
+      type: c.type, difficulty: diff, label: info.label, tierLabel: tier.label, tierColor: tier.color,
+      bet: Math.round(info.bet * st.dealerBet * betScale * tier.betMul),
+    };
+    this.playerCards = [this.draw1(), this.draw1()];
+    this.dealerCards = [this.draw1(), this.draw1()];
+    this.stood = false;
+    this.dealerRevealed = false;
 
-  submitDigit(d) {
-    if (this.phase !== 'input') return;
-    sfx.play('keypad', d);
-    const idx = this.input.length;
-    this.input.push(d);
-    this.inputFlash[d] = 0.3;
-    const pp = padPos(d);
-    if (pp) this.burst(pp.bx + PAD_BTN / 2, pp.by + PAD_BTN / 2, d === this.sequence[idx] ? PAL.green : PAL.red, 8);
-
-    if (d !== this.sequence[idx]) {
-      this.phase = 'fail';
-      this.phaseT = 0;
-      this.shakeT = 0.4;
-      this.msg = 'Wrong code';
-      this.msgT = 1.5;
-      this.msgGood = false;
+    if (handValue(this.playerCards) === 21) {
+      this.dealerRevealed = true;
+      this.stood = true;
+      this.resolveHand();
       return;
     }
-    if (this.input.length === this.sequence.length) {
-      this.roundsCleared++;
-      this.lockPulse = 1;
-      if (this.round >= ROUNDS) {
-        this.phase = 'win';
-        this.phaseT = 0;
-        this.msg = 'Vault cracked!';
-        this.msgT = 2;
-        this.msgGood = true;
-        this.burst(GW / 2, GH / 2, PAL.gold, 40);
-      } else {
-        this.phase = 'correct';
-        this.phaseT = 0;
-        this.msg = `Sequence ${this.round} cleared`;
-        this.msgT = 1.2;
-        this.msgGood = true;
-      }
+  }
+
+  hit() {
+    if (this.phase !== 'play' || this.stood) return;
+    sfx.play('keypad', 1);
+    this.playerCards.push(this.draw1());
+    if (handValue(this.playerCards) > 21) {
+      this.stood = true;
+      this.dealerRevealed = true;
+      this.resolveHand();
+    } else if (handValue(this.playerCards) === 21) {
+      this.stand();
     }
   }
 
-  hitTestPad(mx, my) {
-    for (let r = 0; r < PAD_ROWS; r++)
-      for (let c = 0; c < PAD_COLS; c++) {
-        const d = PAD_LAYOUT[r][c];
-        if (d < 0) continue;
-        const bx = PAD_X + c * (PAD_BTN + PAD_GAP);
-        const by = PAD_Y + r * (PAD_BTN + PAD_GAP);
-        if (mx >= bx && mx <= bx + PAD_BTN && my >= by && my <= by + PAD_BTN) return d;
-      }
-    return -1;
+  stand() {
+    if (this.phase !== 'play' || this.stood) return;
+    sfx.play('keypad', 5);
+    this.stood = true;
+    this.dealerRevealed = true;
+    while (handValue(this.dealerCards) < 17) this.dealerCards.push(this.draw1());
+    this.resolveHand();
+  }
+
+  resolveHand() {
+    const pv = handValue(this.playerCards);
+    const dv = handValue(this.dealerCards);
+    const st = this.game.stats;
+    const bet = this.current.bet;
+    let hit, quipPool;
+    const isBlackjack = pv === 21 && this.playerCards.length === 2;
+
+    if (pv > 21) {
+      hit = false; quipPool = QUIPS.lose;
+    } else if (dv > 21) {
+      hit = true; quipPool = QUIPS.win;
+    } else if (isBlackjack && !(dv === 21 && this.dealerCards.length === 2)) {
+      hit = true; quipPool = QUIPS.blackjack;
+    } else if (pv > dv) {
+      hit = true; quipPool = QUIPS.win;
+    } else if (pv < dv) {
+      hit = false; quipPool = QUIPS.lose;
+    } else {
+      hit = null; quipPool = QUIPS.push;
+    }
+
+    const mul = isBlackjack && hit ? 1.5 : 1;
+    const amount = hit ? Math.round(bet * st.houseEdge * mul) : hit === false ? bet : 0;
+    if (hit === true) { this.won += amount; this.game.addMoney(amount, 'blackjack'); }
+    else if (hit === false) { const pay = Math.min(amount, this.game.s.money); this.game.spend(pay); this.lost += pay; }
+
+    this.results.push({ hit: hit === true, blackjack: isBlackjack && hit, amount, quip: quipPool[Math.floor(Math.random() * quipPool.length)], push: hit === null, pv, dv });
+
+    if (isBlackjack && hit) {
+      sfx.play('bullseye');
+      this.burst(GW / 2, 300, PAL.gold, 40);
+      this.shakeT = 0.6;
+    } else if (hit) {
+      sfx.playRandom('happy', 'chuckle', 'ching');
+      this.burst(GW / 2, 300, PAL.gold, 28);
+      this.shakeT = 0.35;
+    } else if (hit === false) {
+      sfx.playRandom('groan', 'oof', 'frustrate');
+      this.burst(GW / 2, 300, PAL.red, 14);
+      this.shakeT = 0.5;
+    } else {
+      sfx.play('huff');
+      this.shakeT = 0.2;
+    }
+    this.phase = 'result';
+    this.phaseT = isBlackjack ? 2.6 : 2.0;
   }
 
   onDown() {
-    if (this.phase !== 'input') return;
-    const d = this.hitTestPad(this.mouse.x, this.mouse.y);
-    if (d >= 0) this.submitDigit(d);
+    if (this.phase !== 'play' || this.stood) return;
+    const mx = this.mouse.x, my = this.mouse.y;
+    const btnY = 490, btnH = 50, btnW = 140;
+    if (my >= btnY && my <= btnY + btnH) {
+      if (mx >= GW / 2 - btnW - 20 && mx <= GW / 2 - 20) this.hit();
+      else if (mx >= GW / 2 + 20 && mx <= GW / 2 + 20 + btnW) this.stand();
+    }
   }
 
   onKey(e) {
-    const k = e.key;
-    if (k >= '0' && k <= '9') this.submitDigit(parseInt(k, 10));
+    if (e.code === 'KeyH' || e.code === 'Space') { e.preventDefault(); this.hit(); }
+    else if (e.code === 'KeyS' || e.code === 'Enter') { e.preventDefault(); this.stand(); }
   }
 
   update(dt) {
-    this.phaseT += dt;
-    this.shakeT = Math.max(0, this.shakeT - dt);
-    this.lockPulse = Math.max(0, this.lockPulse - dt * 2);
-    this.msgT = Math.max(0, this.msgT - dt);
-    for (const d in this.inputFlash) {
-      this.inputFlash[d] = Math.max(0, this.inputFlash[d] - dt);
-      if (this.inputFlash[d] <= 0) delete this.inputFlash[d];
+    this.shakeT = Math.max(0, this.shakeT - dt * 1.6);
+    for (let i = this.chips.length - 1; i >= 0; i--) {
+      const p = this.chips[i];
+      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 620 * dt; p.vx *= 0.98; p.r += p.vr * dt;
+      p.life -= dt; if (p.life <= 0) this.chips.splice(i, 1);
     }
-
-    for (let i = this.sparks.length - 1; i >= 0; i--) {
-      const p = this.sparks[i];
-      p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt; p.vx *= 0.97;
-      p.life -= dt; if (p.life <= 0) this.sparks.splice(i, 1);
-    }
-
-    if (this.phase === 'show') {
-      const cur = this.activeShowDigit();
-      if (cur >= 0 && cur !== this.showIdx) {
-        this.showIdx = cur;
-        sfx.play('keypad', this.sequence[cur]);
-      } else if (cur < 0 && this.showIdx >= 0) {
-        this.showIdx = -1;
+    if (this.phase === 'intro') { this.phaseT -= dt; if (this.phaseT <= 0) this.phase = 'play'; return; }
+    if (this.phase === 'result') {
+      this.phaseT -= dt;
+      if (this.phaseT <= 0) {
+        this.hand++;
+        if (this.hand >= this.players.length) this.finish({ won: this.won, lost: this.lost, hands: this.results });
+        else { this.setupHand(); this.phase = 'intro'; this.phaseT = 1.2; }
       }
-      if (this.phaseT >= this.showDuration()) {
-        this.phase = 'input';
-        this.phaseT = 0;
-        this.input = [];
-      }
-    } else if (this.phase === 'correct') {
-      if (this.phaseT >= 1.2) this.startRound();
-    } else if (this.phase === 'fail') {
-      if (this.phaseT >= 2) this.finish({ banked: this.bankAmount() });
-    } else if (this.phase === 'win') {
-      if (this.phaseT >= 2.5) this.finish({ banked: this.bankAmount() });
     }
   }
 
-  // ---- drawing ----
-
-  drawVault(ctx, t) {
-    const vx = GW - 240, vy = 100, vw = 180, vh = 240;
-    const openFrac = this.roundsCleared / ROUNDS;
-
+  drawCard(ctx, card, x, y, faceDown = false) {
+    const cw = 70, ch = 100, r = 8;
     ctx.save();
-    ctx.fillStyle = '#0b0910';
-    this.roundRect(ctx, vx - 20, vy - 20, vw + 40, vh + 40, 10); ctx.fill();
-    const steel = ctx.createLinearGradient(vx - 20, vy, vx + vw + 20, vy);
-    steel.addColorStop(0, '#2a3038'); steel.addColorStop(0.4, '#48525e'); steel.addColorStop(0.62, '#333b45'); steel.addColorStop(1, '#1e242b');
-    ctx.fillStyle = steel;
-    this.roundRect(ctx, vx - 12, vy - 12, vw + 24, vh + 24, 8); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 2; ctx.stroke();
-
-    for (let i = 0; i < 6; i++) {
-      const ry = vy - 4 + i * (vh + 8) / 5;
-      ctx.fillStyle = '#5d6874';
-      ctx.beginPath(); ctx.arc(vx - 8, ry, 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(vx + vw + 8, ry, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = faceDown ? '#1a2040' : '#f7f3e8';
+    this.roundRect(ctx, x, y, cw, ch, r); ctx.fill();
+    ctx.strokeStyle = faceDown ? '#3a4a6a' : '#c8c0b0'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.shadowBlur = 0;
+    if (faceDown) {
+      ctx.fillStyle = '#2a3a5a';
+      for (let dx = 8; dx < cw - 4; dx += 12) for (let dy = 8; dy < ch - 4; dy += 12) {
+        ctx.fillRect(x + dx, y + dy, 6, 6);
+      }
+    } else {
+      const col = isRed(card) ? PAL.red : '#111';
+      ctx.fillStyle = col;
+      ctx.font = `bold 22px ${SERIF}`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(card.rank, x + 6, y + 4);
+      ctx.font = `18px ${SERIF}`;
+      ctx.fillText(card.suit, x + 6, y + 26);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `bold 32px ${SERIF}`;
+      ctx.fillText(card.suit, x + cw / 2, y + ch / 2 + 8);
     }
-
-    ctx.fillStyle = '#05040a'; ctx.fillRect(vx, vy, vw, vh);
-    const glow = ctx.createLinearGradient(0, vy, 0, vy + vh);
-    glow.addColorStop(0, this.rgba(PAL.gold, 0.14)); glow.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = glow; ctx.fillRect(vx, vy, vw, vh);
-
-    for (let i = 0; i < this.roundsCleared; i++) {
-      const by = vy + vh - 24 - i * 50;
-      ctx.fillStyle = '#1f6b3f'; this.roundRect(ctx, vx + 14, by, vw - 28, 34, 4); ctx.fill();
-      ctx.fillStyle = '#2f8d55'; ctx.fillRect(vx + 14, by, vw - 28, 8);
-      ctx.fillStyle = PAL.pink; ctx.fillRect(vx + vw / 2 - 6, by, 12, 34);
-      this.text(ctx, fmtMoney(this.perRoundValue), vx + vw / 2, by + 17, 11, '#0b2e1c', 'center');
-    }
-
-    const doorWidth = vw * (1 - openFrac * 0.85);
-    const dg = ctx.createLinearGradient(vx, 0, vx + Math.max(20, doorWidth), 0);
-    dg.addColorStop(0, '#525d6a'); dg.addColorStop(1, '#242b33');
-    ctx.fillStyle = dg;
-    ctx.fillRect(vx, vy, Math.max(20, doorWidth), vh);
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
-    ctx.strokeRect(vx, vy, Math.max(20, doorWidth), vh);
-
-    if (openFrac < 1) {
-      const hx = vx + doorWidth * 0.6, hy = vy + vh / 2, rr = 22;
-      ctx.save(); ctx.translate(hx, hy); ctx.rotate(t * 1.5 + openFrac * Math.PI);
-      ctx.strokeStyle = '#8d99a6'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke();
-      for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); ctx.stroke(); }
-      ctx.fillStyle = '#b9c4d0'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-
-    const lockY = vy + vh + 32;
-    for (let i = 0; i < ROUNDS; i++) {
-      const lx = vx + (i + 0.5) * vw / ROUNDS;
-      const cleared = i < this.roundsCleared;
-      const pulse = cleared && this.lockPulse > 0 && i === this.roundsCleared - 1;
-      ctx.save();
-      if (pulse) { ctx.shadowColor = PAL.green; ctx.shadowBlur = 16; }
-      ctx.fillStyle = cleared ? PAL.green : this.rgba(PAL.dim, 0.3);
-      ctx.beginPath(); ctx.arc(lx, lockY, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      if (cleared) this.text(ctx, '✓', lx, lockY, 10, '#000', 'center', undefined, '800');
-    }
-    this.label(ctx, `${this.roundsCleared} / ${ROUNDS} locks`, vx + vw / 2, lockY + 20, 11, PAL.dim, 'center');
     ctx.restore();
   }
 
-  drawPad(ctx) {
-    const mx = this.mouse.x, my = this.mouse.y;
-    const activeIdx = this.activeShowDigit();
-    const activeDigit = activeIdx >= 0 ? this.sequence[activeIdx] : -1;
-    const isInput = this.phase === 'input';
-
-    for (let r = 0; r < PAD_ROWS; r++) {
-      for (let c = 0; c < PAD_COLS; c++) {
-        const d = PAD_LAYOUT[r][c];
-        if (d < 0) continue;
-        const bx = PAD_X + c * (PAD_BTN + PAD_GAP);
-        const by = PAD_Y + r * (PAD_BTN + PAD_GAP);
-        const hover = isInput && mx >= bx && mx <= bx + PAD_BTN && my >= by && my <= by + PAD_BTN;
-        const showLit = d === activeDigit;
-        const inputLit = (this.inputFlash[d] || 0) > 0;
-
-        ctx.save();
-
-        if (showLit) {
-          ctx.shadowColor = PAL.gold; ctx.shadowBlur = 24;
-          ctx.fillStyle = this.rgba(PAL.gold, 0.35);
-          this.roundRect(ctx, bx - 2, by - 2, PAD_BTN + 4, PAD_BTN + 4, 12); ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = this.rgba(PAL.gold, 0.25);
-        } else if (inputLit) {
-          ctx.fillStyle = this.rgba(PAL.green, 0.22);
-        } else if (hover) {
-          ctx.fillStyle = this.rgba(PAL.gold, 0.14);
-        } else {
-          ctx.fillStyle = 'rgba(14,10,22,0.72)';
-        }
-
-        this.roundRect(ctx, bx, by, PAD_BTN, PAD_BTN, 10); ctx.fill();
-        ctx.strokeStyle = showLit ? this.rgba(PAL.gold, 0.9) : hover ? this.rgba(PAL.gold, 0.6) : this.rgba(PAL.gold, 0.15);
-        ctx.lineWidth = showLit ? 3 : hover ? 2 : 1.5; ctx.stroke();
-
-        const textColor = showLit ? PAL.gold : hover ? PAL.gold : isInput ? PAL.bone : this.rgba(PAL.bone, 0.5);
-        const glowAmt = showLit ? 22 : hover ? 14 : 6;
-        this.neon(ctx, `${d}`, bx + PAD_BTN / 2, by + PAD_BTN / 2, 36, textColor, 'center', glowAmt, 2);
-
-        ctx.restore();
-      }
-    }
-  }
-
-  drawInputSlots(ctx) {
-    const n = this.sequence.length;
-    const slotW = 36, slotGap = 8;
-    const totalW = n * slotW + (n - 1) * slotGap;
-    const sx = GW / 2 - totalW / 2;
-    const sy = PAD_Y + PAD_H + 20;
-
-    for (let i = 0; i < n; i++) {
-      const x = sx + i * (slotW + slotGap);
-      const filled = i < this.input.length;
-      const correct = filled && this.input[i] === this.sequence[i];
-      const wrong = filled && !correct;
-      const current = i === this.input.length && this.phase === 'input';
-
-      ctx.save();
-      const color = wrong ? PAL.red : correct ? PAL.green : current ? PAL.cyan : PAL.dim;
-      ctx.fillStyle = this.rgba(color, filled ? 0.18 : current ? 0.1 + Math.sin(this.t * 5) * 0.04 : 0.04);
-      this.roundRect(ctx, x, sy, slotW, slotW, 6); ctx.fill();
-      ctx.strokeStyle = this.rgba(color, filled ? 0.6 : 0.2); ctx.lineWidth = 1.5; ctx.stroke();
-
-      if (filled) {
-        this.neon(ctx, `${this.input[i]}`, x + slotW / 2, sy + slotW / 2, 22, wrong ? PAL.red : PAL.green, 'center', 10, 1);
-      } else if (this.phase === 'show') {
-        const aidx = this.activeShowDigit();
-        if (aidx >= 0 && i <= aidx) {
-          this.neon(ctx, `${this.sequence[i]}`, x + slotW / 2, sy + slotW / 2, 22, i === aidx ? PAL.gold : this.rgba(PAL.gold, 0.4), 'center', i === aidx ? 12 : 4, 1);
-        }
-      }
-      ctx.restore();
-    }
+  drawTable(ctx) {
+    const t = this.t;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const cone = ctx.createRadialGradient(GW / 2, 210, 20, GW / 2, 380, 520);
+    cone.addColorStop(0, 'rgba(255,214,150,0.16)'); cone.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = cone; ctx.beginPath();
+    ctx.moveTo(GW / 2 - 60, 0); ctx.lineTo(GW / 2 + 60, 0); ctx.lineTo(GW / 2 + 470, GH); ctx.lineTo(GW / 2 - 470, GH); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    const cx = GW / 2, cy = GH + 90, rx = 640, ry = 430;
+    const felt = ctx.createRadialGradient(cx, cy - ry * 0.6, 40, cx, cy, rx);
+    felt.addColorStop(0, '#12492d'); felt.addColorStop(0.45, '#092e1d'); felt.addColorStop(1, '#03110b');
+    ctx.fillStyle = felt; ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.clip();
+    ctx.globalAlpha = 0.05; ctx.strokeStyle = '#9fe8bd'; ctx.lineWidth = 1;
+    for (let x = 0; x < GW; x += 7) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.35); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx - 90, ry - 70, 0, Math.PI, 0); ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = '#3a2412'; ctx.lineWidth = 22; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.stroke();
+    ctx.strokeStyle = '#5c3a1c'; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI, 0); ctx.stroke();
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.25); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx - 9, ry - 6, 0, Math.PI, 0); ctx.stroke();
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = 0.24;
+    this.neon(ctx, 'BLACKJACK PAYS 3:2', cx, GH - 22, 22, PAL.gold, 'center', 0, 6);
+    ctx.restore();
   }
 
   draw(ctx) {
-    const t = this.t;
-    this.backdrop(ctx, PAL.cyan, t);
-
+    const t = this.t, cur = this.current;
     ctx.save();
-    if (this.shakeT > 0) ctx.translate(Math.sin(t * 60) * this.shakeT * 12, Math.cos(t * 47) * this.shakeT * 6);
+    if (this.shakeT > 0) ctx.translate((Math.random() - 0.5) * this.shakeT * 16, (Math.random() - 0.5) * this.shakeT * 16);
 
-    // info panel — top left
-    this.panel(ctx, 30, 100, 240, 100, { accent: PAL.gold });
-    this.readout(ctx, 50, 112, 'in the hoppers', fmtMoney(this.total), PAL.gold, 'left', 24);
-    this.readout(ctx, 50, 156, 'secured so far', fmtMoney(this.bankAmount()), PAL.green, 'left', 24);
+    this.backdrop(ctx, PAL.green, t);
+    this.drawTable(ctx);
 
-    // round indicator
-    this.panel(ctx, 30, 220, 240, 46, { accent: PAL.cyan });
-    this.label(ctx, `sequence ${this.round} of ${ROUNDS}  ·  ${this.seqLen()} digits`, 150, 236, 11, PAL.cyan, 'center');
-    const barW = 200, barX = 50, barY = 252;
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    this.roundRect(ctx, barX, barY, barW, 5, 3); ctx.fill();
-    ctx.fillStyle = PAL.cyan;
-    this.roundRect(ctx, barX, barY, barW * (this.round / ROUNDS), 5, 3); ctx.fill();
+    // gambler info
+    const tint = { drunk: PAL.pink, regular: PAL.cyan, sharp: '#b39ddb', whale: PAL.gold }[cur.type] || PAL.cyan;
+    this.panel(ctx, 26, 88, 220, 120, { accent: tint });
+    this.label(ctx, `hand ${this.hand + 1} of ${this.players.length}`, 46, 100, 11, PAL.dim);
+    this.neon(ctx, `${cur.label} gambler`, 46, 126, 22, tint, 'left', 12, 1);
+    ctx.save();
+    ctx.fillStyle = this.rgba(cur.tierColor, 0.18);
+    this.roundRect(ctx, 46, 140, 62, 20, 4); ctx.fill();
+    ctx.strokeStyle = this.rgba(cur.tierColor, 0.6); ctx.lineWidth = 1; ctx.stroke();
+    this.label(ctx, cur.tierLabel, 77, 150, 10, cur.tierColor, 'center');
+    ctx.restore();
+    this.label(ctx, 'bet', 46, 172, 10, PAL.dim);
+    this.text(ctx, fmtMoney(cur.bet), 46, 194, 22, PAL.green, 'left');
 
-    // phase instruction
-    let instruction = '';
-    if (this.phase === 'show') instruction = 'watch the keypad';
-    else if (this.phase === 'input') instruction = 'enter the code';
-    else if (this.phase === 'correct') instruction = 'correct — next sequence';
-    else if (this.phase === 'fail') instruction = 'vault lockout — wrong code';
-    else if (this.phase === 'win') instruction = 'all sequences cracked!';
-    this.label(ctx, instruction, GW / 2, PAD_Y - 20, 14, this.phase === 'fail' ? PAL.red : this.phase === 'win' ? PAL.gold : PAL.bone, 'center');
+    if (this.phase === 'play' || this.phase === 'result') {
+      // dealer's cards
+      this.label(ctx, 'DEALER', GW / 2, 100, 12, PAL.dim, 'center');
+      const dcx = GW / 2 - (this.dealerCards.length * 80) / 2;
+      for (let i = 0; i < this.dealerCards.length; i++) {
+        this.drawCard(ctx, this.dealerCards[i], dcx + i * 80, 116, i === 1 && !this.dealerRevealed);
+      }
+      const dv = this.dealerRevealed ? handValue(this.dealerCards) : '?';
+      this.neon(ctx, `${dv}`, GW / 2, 232, 28, PAL.bone, 'center', 10, 1);
 
-    this.drawPad(ctx);
-    this.drawInputSlots(ctx);
-    this.drawVault(ctx, t);
+      // player's cards
+      this.label(ctx, 'YOUR HAND', GW / 2, 260, 12, PAL.dim, 'center');
+      const pcx = GW / 2 - (this.playerCards.length * 80) / 2;
+      for (let i = 0; i < this.playerCards.length; i++) {
+        this.drawCard(ctx, this.playerCards[i], pcx + i * 80, 278);
+      }
+      const pv = handValue(this.playerCards);
+      const pvCol = pv > 21 ? PAL.red : pv === 21 ? PAL.gold : PAL.bone;
+      this.neon(ctx, `${pv}`, GW / 2, 396, 28, pvCol, 'center', 10, 1);
 
-    // sparks
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const p of this.sparks) {
-      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      // hit/stand buttons
+      if (this.phase === 'play' && !this.stood) {
+        const btnY = 430, btnH = 50, btnW = 140;
+        const mx = this.mouse.x, my = this.mouse.y;
+        // HIT
+        const hx = GW / 2 - btnW - 20;
+        const hHover = mx >= hx && mx <= hx + btnW && my >= btnY && my <= btnY + btnH;
+        ctx.fillStyle = hHover ? this.rgba(PAL.green, 0.3) : this.rgba(PAL.green, 0.15);
+        this.roundRect(ctx, hx, btnY, btnW, btnH, 10); ctx.fill();
+        ctx.strokeStyle = PAL.green; ctx.lineWidth = 2; ctx.stroke();
+        this.neon(ctx, 'HIT (H)', hx + btnW / 2, btnY + btnH / 2, 22, PAL.green, 'center', 10, 1);
+        // STAND
+        const sx = GW / 2 + 20;
+        const sHover = mx >= sx && mx <= sx + btnW && my >= btnY && my <= btnY + btnH;
+        ctx.fillStyle = sHover ? this.rgba(PAL.gold, 0.3) : this.rgba(PAL.gold, 0.15);
+        this.roundRect(ctx, sx, btnY, btnW, btnH, 10); ctx.fill();
+        ctx.strokeStyle = PAL.gold; ctx.lineWidth = 2; ctx.stroke();
+        this.neon(ctx, 'STAND (S)', sx + btnW / 2, btnY + btnH / 2, 22, PAL.gold, 'center', 10, 1);
+      }
+    }
+
+    if (this.phase === 'intro') {
+      const a = Math.min(1, (1.6 - this.phaseT) * 4);
+      ctx.save(); ctx.globalAlpha = a;
+      this.neon(ctx, `A ${cur.label.toLowerCase()} sits down`, GW / 2, 240, 44, PAL.bone, 'center', 20, 3);
+      this.neon(ctx, cur.tierLabel.toUpperCase(), GW / 2, 282, 26, cur.tierColor, 'center', 14, 2);
+      this.text(ctx, `They're betting ${fmtMoney(cur.bet)} — beat their hand to win.`, GW / 2, 320, 18, PAL.gold, 'center', undefined, '500');
+      ctx.restore();
+    }
+
+    if (this.phase === 'result') {
+      const r = this.results[this.results.length - 1];
+      if (r.blackjack) {
+        this.banner(ctx, `BLACKJACK!  +${fmtMoney(r.amount)}`, 62, PAL.gold, 42);
+      } else if (r.push) {
+        this.banner(ctx, 'PUSH — TIE GAME', 62, PAL.dim, 38);
+      } else {
+        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 62, r.hit ? PAL.gold : PAL.red, 38);
+      }
+      ctx.save(); ctx.font = `italic 19px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(r.quip, GW / 2, 542); ctx.restore();
+    }
+
+    // flying chips
+    ctx.save();
+    for (const p of this.chips) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.max));
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
       ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 10;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(0, 0, 9, 9 * Math.abs(Math.cos(p.r)) + 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillRect(-9, -1.5, 18, 3);
+      ctx.restore();
     }
     ctx.restore();
 
+    // scoreline
+    this.vignette(ctx, 0.45);
+    ctx.fillStyle = 'rgba(4,3,8,0.7)'; ctx.fillRect(0, 0, GW, 62);
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.28); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, 62); ctx.lineTo(GW, 62); ctx.stroke();
+    this.readout(ctx, 30, 20, 'house took', fmtMoney(this.won), PAL.green, 'left', 26);
+    this.readout(ctx, GW - 30, 20, 'paid out', fmtMoney(this.lost), this.lost ? PAL.red : PAL.dim, 'right', 26);
+    this.bulbs(ctx, GW / 2 - 110, 30, 220, t, { count: 9, color: PAL.gold, r: 2.6 });
     ctx.restore();
-
-    this.vignette(ctx, 0.5);
-    if (this.msgT > 0) this.banner(ctx, this.msg, GH / 2 + 40, this.msgGood ? PAL.green : PAL.red, 30, Math.min(1, this.msgT * 2));
   }
 }

@@ -72,10 +72,10 @@ export const SKILLS = [
     id: 'back',
     name: 'Sharp Memory',
     icon: '💪',
-    blurb: 'Cracking the vault. A sharper mind means bigger hoppers and fatter stacks.',
-    activity: 'Vault Crack',
+    blurb: 'A sharper mind means guests spend more and stick around longer.',
+    activity: 'Passive',
     perLevel: [
-      { stat: 'hopperCap', mul: 1.3 },
+      { stat: 'stayTime', mul: 1.08 },
       { stat: 'spendPerMin', mul: 1.08 },
     ],
     cosmetic: ['Rolled sleeves', 'Broader shoulders', 'Weight belt', 'Money bag', 'Two money bags'],

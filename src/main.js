@@ -20,6 +20,7 @@ import * as music from './audio/music.js';
 import * as sfx from './audio/sfx.js';
 import { DevPanel } from './ui/devpanel.js';
 import { Tutorial } from './engine/tutorial.js';
+import { setMessagesEnabled, snapshotStats, emitStatChanges, showMessage } from './ui/messages.js';
 
 const $ = id => document.getElementById(id);
 
@@ -293,7 +294,7 @@ const AMBIENT_QUIPS = [
   'I could add more oxygen to the vents. Or something stronger.',
   'Vegas. One day. A casino so big it has its own weather.',
   'Every clock I remove adds an hour to their stay. Science.',
-  'A full hopper is a wasted hopper. Get that cash to the safe.',
+  'The longer they stay, the more they leave behind.',
   'Heat\'s getting high. Someone official is going to want an envelope.',
   'Free drinks are the most expensive thing in this building.',
   'Is it evil if it\'s profitable? Asking for me.',
@@ -305,7 +306,6 @@ const MOODS = { duck: { bloomStrength: 0.45, vignette: 0.6, warmth: 0.07 }, rat:
 
 function rebuildWorld({ keepCustomers = true } = {}) {
   const def = game.casinoDef;
-  const oldCash = game.s.machineCash;
   world.build(def, game);
   effects.build(world, def);
   postfx.setMood(MOODS[def.id]);
@@ -320,10 +320,6 @@ function rebuildWorld({ keepCustomers = true } = {}) {
     if (u.legR) u.legR.rotation.x = 0;
     if (c.state !== 'leaving') { c.state = 'entering'; c.path = []; c.stuck = 0; }
   }
-  const hoppers = [...world.machines, ...world.tables];
-  const each = hoppers.length ? oldCash / hoppers.length : 0;
-  for (const h of hoppers) h.cash = Math.min(game.stats.hopperCap, each);
-  game.s.machineCash = hoppers.reduce((a, h) => a + h.cash, 0);
   world.collide(player.pos, 0.4);
   pedMgr.world = world;
   pedMgr.clearAll();
@@ -337,7 +333,7 @@ game.on('casino', () => {
   player.rebuildModel();
   if (!started) return;
   toast(`Welcome to ${game.casinoDisplayName()}.`, 'good');
-  quip(game.s.casino === 2 ? 'Vegas. I\'m home.' : 'Bigger floor. Bigger hoppers. Bigger everything.');
+  quip(game.s.casino === 2 ? 'Vegas. I\'m home.' : 'Bigger floor. Bigger everything.');
 });
 game.on('upgrade', u => {
   // Spawn upgrades stay in inventory until placed — no world rebuild needed
@@ -372,7 +368,7 @@ game.on('equip', () => {
 });
 game.on('won', () => setTimeout(showWin, 1500));
 let whaleToastAt = -999;
-game.on('customer', ({ type }) => { if (type === 'whale' && time - whaleToastAt > 25) { whaleToastAt = time; toast('A whale just walked in. Get to the table.', 'good'); } });
+game.on('customer', ({ type }) => { if (type === 'whale' && time - whaleToastAt > 25) { whaleToastAt = time; showMessage('A whale just walked in. Get to the table.', { from: 'casino' }); } });
 
 // build the world right away so it sits behind the title screen
 game.reconcileMachineInventory();
@@ -385,10 +381,17 @@ const tutorial = new Tutorial();
 // Listen for events that advance tutorial steps
 game.on('upgrade', (u) => {
   if (!tutorial.isActive()) return;
-  if (tutorial.stepId === 'buy_machine' && (u.spawns || tutorial.hasBoughtMachine())) {
+  // Step 1 (buy_table): bought the roulette table
+  if (tutorial.stepId === 'buy_table' && (u.spawns || tutorial.hasBoughtTable())) {
     tutorial.advance(); // -> place_it
     tutorial.showObjective('place_it');
-    toast('Machine acquired! Open Build and click it in your inventory.', 'good', 4000);
+    toast('Table acquired! Open Build and click it in your inventory.', 'good', 4000);
+  }
+  // Step 7 (buy_slot): bought the slot machine
+  if (tutorial.stepId === 'buy_slot' && (u.spawns || tutorial.hasBoughtSlot())) {
+    tutorial.advance(); // -> place_slot
+    tutorial.showObjective('place_slot');
+    toast('Slot machine acquired! Open Build and place it.', 'good', 4000);
   }
 });
 
@@ -396,10 +399,10 @@ game.on('customer', () => {
   if (!tutorial.isActive()) return;
   if (tutorial.stepId === 'first_guest') {
     tutorial.hideObjective();
-    tutorial.advance(); // -> earn_500
+    tutorial.advance(); // -> deal_roulette
     setTimeout(() => {
       tutorial.showCutscene('first_guest').then(() => {
-        tutorial.showObjective('earn_500');
+        tutorial.showObjective('deal_roulette');
       });
     }, 1500);
   }
@@ -412,6 +415,10 @@ game.on('money', ({ amount, source }) => {
     tutorial.hideObjective();
     toast('Tutorial complete. The floor is yours.', 'good', 5000);
     quip('Five hundred bucks. That\'s a start. A terrible, beautiful start.');
+  }
+  // Flag: player won a roulette hand and can afford the slot
+  if (tutorial.stepId === 'deal_roulette' && source === 'roulette' && amount > 0 && game.s.money >= 150) {
+    tutorial._rouletteWinReady = true;
   }
 });
 
@@ -427,8 +434,8 @@ else { document.documentElement.classList.remove('has-save'); }
 async function runTutorialIntro() {
   player.teleport(world.doorInside.x, world.doorInside.z - 2);
   await tutorial.showCutscene('intro');
-  tutorial.advance(); // intro -> buy_machine
-  tutorial.showObjective('buy_machine');
+  tutorial.advance(); // intro -> buy_table
+  tutorial.showObjective('buy_table');
 }
 
 function start() {
@@ -448,7 +455,7 @@ function start() {
     if (tutorial.shouldRun()) {
       tutorial.active = true;
       runTutorialIntro();
-    } else if (!tutorial.complete && tutorial.step > 0 && tutorial.step < 7) {
+    } else if (!tutorial.complete && tutorial.step > 0 && tutorial.step < 10) {
       // Returning mid-tutorial — restore the objective
       tutorial.active = true;
       const sid = tutorial.stepId;
@@ -610,7 +617,25 @@ const devPanel = new DevPanel({
   onLightingChange: () => applyLightSettings(game.s.lighting),
   onTutorialSkip: () => { tutorial.skip(); rebuildWorld(); },
   onTutorialReset: () => { tutorial.reset(); },
+  onStatMessagesChange: () => {
+    game.s.showStatMessages = !game.s.showStatMessages;
+    game.save();
+    setMessagesEnabled(game.s.showStatMessages);
+    if (game.s.showStatMessages) snapshotStats();
+  },
 });
+
+// ---- unified message banner --------------------------------------------------
+if (game.s.showStatMessages) setMessagesEnabled(true);
+snapshotStats();
+{
+  const origRecompute = game.recompute.bind(game);
+  game.recompute = function () {
+    snapshotStats();
+    origRecompute();
+    emitStatChanges();
+  };
+}
 
 // ---- floor editor (always-on: hover outlines, click to select) ------------------
 
@@ -672,7 +697,8 @@ const _origEditorOnChange = editor.onChange;
 editor.onChange = () => {
   _origEditorOnChange();
   game.recompute();
-  if (tutorial.isActive() && tutorial.stepId === 'place_it' && tutorial.hasPlacedMachine()) {
+  // Tutorial: roulette table placed (step 2 -> nobody -> advertise)
+  if (tutorial.isActive() && tutorial.stepId === 'place_it' && tutorial.hasPlacedTable()) {
     if (arrangeMode) toggleArrangeMode(false);
     tutorial.advance(); // -> nobody
     tutorial.hideObjective();
@@ -680,6 +706,16 @@ editor.onChange = () => {
       await tutorial.showCutscene('nobody');
       tutorial.advance(); // -> advertise
       tutorial.showObjective('advertise');
+    }, 800);
+  }
+  // Tutorial: slot machine placed (step 8 -> earn_500)
+  if (tutorial.isActive() && tutorial.stepId === 'place_slot' && tutorial.hasPlacedSlot()) {
+    if (arrangeMode) toggleArrangeMode(false);
+    tutorial.advance(); // -> earn_500
+    tutorial.hideObjective();
+    setTimeout(async () => {
+      await tutorial.showCutscene('slot_placed');
+      tutorial.showObjective('earn_500');
     }, 800);
   }
 };
@@ -704,7 +740,9 @@ $('editor-move').onclick = () => editor.enterMoveMode();
 $('editor-deal').onclick = () => {
   if (!editor.selected || editor.selected.type !== 'table') return;
   editor.deselect();
-  startActivity('dealer');
+  // During tutorial deal_roulette step, force roulette instead of blackjack
+  if (tutorial.isActive() && tutorial.stepId === 'deal_roulette') startActivity('roulette');
+  else startActivity('dealer');
 };
 
 // Arrange Floor button in sidebar — toggles arrange mode
@@ -808,11 +846,11 @@ document.querySelectorAll('.sb-action').forEach(h => {
 
 function jumpTo(key) {
   if (key === 'advertising') { player.teleport(world.streetPos.x, world.streetPos.z, Math.PI); return; }
-  if (key === 'dealer') {
+  if (key === 'dealer' || key === 'roulette') {
     if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
     return;
   }
-  const z = key === 'cashrun' ? world.zones.safe : world.zones.office;
+  const z = world.zones.office;
   if (z) player.teleport(z.pos.x, z.pos.z);
 }
 function toggleLedger(tab) {
@@ -865,24 +903,24 @@ function launchAdGame(ped) {
 function startActivity(key) {
   if (activeGame || modalOpen) return;
   if (key === 'office') { toggleLedger('casino'); return; }
-  if (key === 'cashrun' && game.s.machineCash < 1) { toast('The hoppers are empty. Get some guests on the machines first.', 'bad'); quip('Nothing to haul. Get people in here.'); return; }
   if (key === 'dealer' && !customers.tablePlayers().length) { toast('Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.', 'bad'); quip('An empty table. My least favourite kind.'); return; }
   player.enabled = false;
   editor.deselect();
   const finish = (fn) => (res) => { activeGame = null; player.enabled = true; player.keys = {}; if (!res.aborted) fn(res); };
-  if (key === 'cashrun') {
-    activeGame = new CashRunGame(game);
+  if (key === 'dealer') {
+    activeGame = new CashRunGame(game, customers.tablePlayers());
     activeGame.onDone = finish(res => {
-      customers.drainHoppers(res.banked);
-      game.addMoney(res.banked, 'cashrun');
       game.save();
-      effects.float(player.pos.x, 2.4, player.pos.z, `+${fmtMoney(res.banked)}`, '#ffd700', 1.6);
-      if (res.banked > 0) sfx.playRandom('ching', 'triumph', 'chuckle');
-      else sfx.play('groan');
-      showResult('Vault crack', `<div class="row"><span>Secured in the vault</span><span class="big">${fmtMoney(res.banked)}</span></div><div class="row"><span>Left in the hoppers</span><b>${fmtMoney(game.s.machineCash)}</b></div><div class="quip">"${res.banked === 0 ? 'Couldn\'t remember a single number. Embarrassing.' : 'Cracked it. The money remembers who it belongs to.'}"</div>`, res.banked ? 'CRACKED' : 'LOCKED');
+      const net = res.won - res.lost;
+      const hadBJ = res.hands.some(h => h.blackjack);
+      if (hadBJ) sfx.play('triumph');
+      else if (net > 0) sfx.playRandom('chuckle', 'happy', 'ching');
+      else if (net < 0) sfx.playRandom('oof', 'groan', 'frustrate');
+      else sfx.play('huff');
+      showResult('Blackjack', `<div class="row"><span>Hands dealt</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter(h => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? 'neg' : ''}">${net >= 0 ? '+' : '-'}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`, net >= 0 ? 'HOUSE' : 'OUCH');
     });
-    activeGame.open('Watch the keypad — memorize the sequence, then punch it back. 4 rounds, 3 to 6 digits.');
-  } else if (key === 'dealer') {
+    activeGame.open('Beat the dealer — get closer to 21 without busting. H to hit, S to stand.');
+  } else if (key === 'roulette') {
     activeGame = new DealerGame(game, customers.tablePlayers());
     activeGame.onDone = finish(res => {
       game.save();
@@ -892,9 +930,25 @@ function startActivity(key) {
       else if (net > 0) sfx.playRandom('chuckle', 'happy', 'ching');
       else if (net < 0) sfx.playRandom('oof', 'groan', 'frustrate');
       else sfx.play('huff');
-      showResult('The table', `<div class="row"><span>Hands dealt</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter(h => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? 'neg' : ''}">${net >= 0 ? '+' : '-'}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`, net >= 0 ? 'HOUSE' : 'OUCH');
+      showResult('Roulette', `<div class="row"><span>Spins</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter(h => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? 'neg' : ''}">${net >= 0 ? '+' : '-'}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`, net >= 0 ? 'HOUSE' : 'OUCH');
+      // Tutorial: roulette game finished and player won enough for a slot
+      if (tutorial.isActive() && tutorial._rouletteWinReady) {
+        tutorial._rouletteWinReady = false;
+        tutorial.advance(); // -> buy_slot
+        tutorial.hideObjective();
+        setTimeout(async () => {
+          $('result').classList.add('hidden');
+          modalOpen = false;
+          setOpenModal(null);
+          await tutorial.showCutscene('roulette_win');
+          tutorial.showObjective('buy_slot');
+          setTimeout(() => {
+            if (!modalOpen) { ledger.show('casino'); modalOpen = true; setOpenModal('ledger:casino'); }
+          }, 600);
+        }, 1500);
+      }
     });
-    activeGame.open('Lock the number inside the gambler\'s margin. SPACE or click.');
+    activeGame.open('Stop the wheel near the target number. SPACE or click.');
   }
 }
 
@@ -914,8 +968,8 @@ window.addEventListener('keydown', e => {
     else if (currentZone) startActivity(currentZone.key);
   }
   else if (!modalOpen && e.code === 'Digit1') jumpTo('advertising');
-  else if (!modalOpen && e.code === 'Digit2') jumpTo('cashrun');
-  else if (!modalOpen && e.code === 'Digit3') jumpTo('dealer');
+  else if (!modalOpen && e.code === 'Digit2') jumpTo('dealer');
+  else if (!modalOpen && e.code === 'Digit3') jumpTo('roulette');
   else if (!modalOpen && e.code === 'KeyG') toggleArrangeMode();
 });
 
@@ -947,17 +1001,13 @@ function frame() {
     game.s.playTime += dt;
     customers.update(dt);
     const st = game.stats;
-    if (st.autoCollect > 0 && game.s.machineCash > 0) {
-      const take = Math.min(game.s.machineCash, game.s.machineCash * st.autoCollect / 60 * dt + 0.2 * dt);
-      customers.drainHoppers(take); game.addMoney(take, 'auto');
-    }
     inspectionTimer -= dt;
     if (inspectionTimer <= 0) {
       inspectionTimer = 90 + Math.random() * 60;
       if (Math.random() < st.heat / 100 * 0.6) {
         const bribe = Math.round(Math.min(game.s.money, Math.max(50, game.s.money * (0.02 + st.heat / 100 * 0.06))));
         game.spend(bribe);
-        toast(`An inspector "dropped by". The envelope cost ${fmtMoney(bribe)}. (Heat ${Math.round(st.heat)}%)`, 'bad', 6000);
+        showMessage(`The envelope cost ${fmtMoney(bribe)}. Heat is at ${Math.round(st.heat)}%.`, { from: 'inspect', duration: 6000 });
         effects.float(player.pos.x, 2.4, player.pos.z, `-${fmtMoney(bribe)}`, '#ff3b3b', 1.4);
         quip(['Cost of doing business. Business is crime.', 'He took the envelope and a buffet voucher. Classy.', 'I should buy someone higher up.'][Math.floor(Math.random() * 3)]);
       }

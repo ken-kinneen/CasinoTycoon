@@ -1,14 +1,15 @@
 import { game, CASINOS, AD_UPGRADES, CASINO_UPGRADES, SKILLS, SKILL_COSTS, ACHIEVEMENTS } from '../state.js';
 import { fmtMoney } from '../minigames/base.js';
 import { ICONS, icon } from './icons.js';
+import { showMessage, setMessagesEnabled, isMessagesEnabled } from './messages.js';
 
 const $ = id => document.getElementById(id);
 
 const CASINO_IDS = CASINOS.map(c => c.id);
 
 export class DevPanel {
-  constructor({ onCasinoChange, onMoneyChange, onReset, onGodModeChange, onPerfChange, onUncapChange, onLightingChange, onTutorialSkip, onTutorialReset }) {
-    this.cbs = { onCasinoChange, onMoneyChange, onReset, onGodModeChange, onPerfChange, onUncapChange, onLightingChange, onTutorialSkip, onTutorialReset };
+  constructor({ onCasinoChange, onMoneyChange, onReset, onGodModeChange, onPerfChange, onUncapChange, onLightingChange, onTutorialSkip, onTutorialReset, onStatMessagesChange }) {
+    this.cbs = { onCasinoChange, onMoneyChange, onReset, onGodModeChange, onPerfChange, onUncapChange, onLightingChange, onTutorialSkip, onTutorialReset, onStatMessagesChange };
     this.open = false;
     this.el = $('dev-panel');
     this.toggle = $('dev-toggle');
@@ -46,6 +47,7 @@ export class DevPanel {
       </div>
       <div class="dp-scroll">
         ${this._buildQuickSection()}
+        ${this._buildMessagesSection()}
         ${this._buildTutorialSection()}
         ${this._buildLightingSection()}
         ${this._buildProgressionSection()}
@@ -83,13 +85,7 @@ export class DevPanel {
           `<button class="dp-chip" data-money="${v}">${fmtMoney(v)}</button>`
         ).join('')}
       </div>
-      <div class="dp-row">
-        <span class="dp-label">Hopper Cash</span>
-        <div class="dp-money-controls">
-          <input class="dp-input" type="number" id="dp-hopper" min="0" step="100" />
-          <button class="dp-btn dp-btn-sm" id="dp-hopper-set">Set</button>
-        </div>
-      </div>
+      
       <div class="dp-row">
         <span class="dp-label">Perf Stats</span>
         <button class="dp-toggle" id="dp-perf"><span id="dp-perf-label">OFF</span></button>
@@ -99,13 +95,35 @@ export class DevPanel {
         <button class="dp-toggle" id="dp-uncap"><span id="dp-uncap-label">OFF</span></button>
       </div>
       <div class="dp-row">
+        <span class="dp-label">Stat Messages</span>
+        <button class="dp-toggle" id="dp-statmsg"><span id="dp-statmsg-label">OFF</span></button>
+      </div>
+      <div class="dp-row">
         <button class="dp-btn dp-btn-danger" id="dp-wipe">Wipe All Progress</button>
       </div>
     </div>`;
   }
 
+  _buildMessagesSection() {
+    return `
+    <div class="dp-section">
+      <div class="dp-section-title">MESSAGES</div>
+      <div class="dp-row dp-actions" style="flex-wrap:wrap;gap:4px">
+        <button class="dp-btn dp-btn-sm" id="dp-msg-good">Good Stat</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-bad">Bad Stat</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-mixed">Mixed Batch</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-burst">All Stats</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-player">Player</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-casino">Casino</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-inspect">Inspector</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-trophy">Achievement</button>
+        <button class="dp-btn dp-btn-sm" id="dp-msg-tutorial">Tutorial</button>
+      </div>
+    </div>`;
+  }
+
   _buildTutorialSection() {
-    const STEP_NAMES = ['intro', 'buy_machine', 'place_it', 'nobody', 'advertise', 'first_guest', 'earn_500', 'done'];
+    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'buy_slot', 'place_slot', 'earn_500', 'done'];
     return `
     <div class="dp-section">
       <div class="dp-section-title">TUTORIAL</div>
@@ -263,7 +281,6 @@ export class DevPanel {
       const idx = parseInt($('dp-casino').value, 10);
       if (!game.s.ownedCasinos.includes(idx)) game.s.ownedCasinos.push(idx);
       game.s.casino = idx;
-      game.s.machineCash = 0;
       game.recompute();
       game.save();
       this.cbs.onCasinoChange(idx);
@@ -293,15 +310,6 @@ export class DevPanel {
       };
     }
 
-    // Hopper cash
-    $('dp-hopper-set').onclick = () => {
-      const v = parseFloat($('dp-hopper').value);
-      if (!isNaN(v) && v >= 0) {
-        game.s.machineCash = v;
-        game.save();
-      }
-    };
-
     // Perf stats
     $('dp-perf').onclick = () => {
       this.cbs.onPerfChange();
@@ -312,6 +320,109 @@ export class DevPanel {
     $('dp-uncap').onclick = () => {
       this.cbs.onUncapChange();
       this._refreshToggles();
+    };
+
+    // Stat Messages
+    $('dp-statmsg').onclick = () => {
+      if (this.cbs.onStatMessagesChange) this.cbs.onStatMessagesChange();
+      this._refreshToggles();
+    };
+
+    // Message test buttons
+    const ensureOn = () => {
+      if (!isMessagesEnabled()) {
+        game.s.showStatMessages = true;
+        game.save();
+        setMessagesEnabled(true);
+        this._refreshToggles();
+      }
+    };
+    const I = (name) => ICONS[name] || '';
+    $('dp-msg-good').onclick = () => {
+      ensureOn();
+      showMessage(
+        `<span class="msg-stat-icon">${I('walk')}</span>` +
+        `<span class="msg-stat-label">Walk-in Traffic</span> ` +
+        `<span class="msg-stat-val msg-val-good">▲ +0.50/min</span>`,
+        { from: 'stat' }
+      );
+    };
+    $('dp-msg-bad').onclick = () => {
+      ensureOn();
+      showMessage(
+        `<span class="msg-stat-icon">${I('flame')}</span>` +
+        `<span class="msg-stat-label">Heat</span> ` +
+        `<span class="msg-stat-val msg-val-bad">▲ +12%</span>`,
+        { from: 'stat' }
+      );
+    };
+    $('dp-msg-mixed').onclick = () => {
+      ensureOn();
+      const items = [
+        { ico: 'dollar', lbl: 'Spend per Guest', val: '▲ +$2.5/min', cls: 'msg-val-good' },
+        { ico: 'chip',   lbl: 'House Edge',      val: '▲ +0.15',     cls: 'msg-val-good' },
+        { ico: 'shades', lbl: 'Gambler Sharpness', val: '▲ +8%',     cls: 'msg-val-bad' },
+        { ico: 'flame',  lbl: 'Heat',             val: '▲ +5%',      cls: 'msg-val-bad' },
+      ];
+      items.forEach((m, i) => {
+        setTimeout(() => showMessage(
+          `<span class="msg-stat-icon">${I(m.ico)}</span>` +
+          `<span class="msg-stat-label">${m.lbl}</span> ` +
+          `<span class="msg-stat-val ${m.cls}">${m.val}</span>`,
+          { from: 'stat' }
+        ), i * 250);
+      });
+    };
+    $('dp-msg-burst').onclick = () => {
+      ensureOn();
+      const items = [
+        { ico: 'walk',   lbl: 'Walk-in Traffic',   val: '▲ +1.20/min',  cls: 'msg-val-good' },
+        { ico: 'dollar', lbl: 'Spend per Guest',   val: '▲ +$3.0/min',  cls: 'msg-val-good' },
+        { ico: 'clock',  lbl: 'Guest Stay Time',   val: '▲ +15s',       cls: 'msg-val-good' },
+        { ico: 'chip',   lbl: 'House Edge',         val: '▲ +0.20',     cls: 'msg-val-good' },
+        { ico: 'crown',  lbl: 'Prestige',           val: '▲ +5',        cls: 'msg-val-good' },
+        { ico: 'shoe',   lbl: 'Walk Speed',         val: '▲ +1.5 m/s',  cls: 'msg-val-good' },
+        { ico: 'hand',   lbl: 'Pocket Tolerance',   val: '▲ +0.25',     cls: 'msg-val-good' },
+        { ico: 'shades', lbl: 'Gambler Sharpness',  val: '▲ +10%',      cls: 'msg-val-bad' },
+        { ico: 'flame',  lbl: 'Heat',               val: '▲ +8%',       cls: 'msg-val-bad' },
+        { ico: 'clock',  lbl: 'Count Speed',        val: '▲ +0.30',     cls: 'msg-val-bad' },
+      ];
+      items.forEach((m, i) => {
+        setTimeout(() => showMessage(
+          `<span class="msg-stat-icon">${I(m.ico)}</span>` +
+          `<span class="msg-stat-label">${m.lbl}</span> ` +
+          `<span class="msg-stat-val ${m.cls}">${m.val}</span>`,
+          { from: 'stat' }
+        ), i * 180);
+      });
+    };
+    $('dp-msg-player').onclick = () => {
+      ensureOn();
+      const quips = [
+        "Time to make some money. This dump isn't going to run itself.",
+        "This place is looking better already. Almost respectable.",
+        "Every dollar in the hopper is a dollar closer to Vegas.",
+        "Nobody out-hustles me. Nobody.",
+        "The house always wins. That's the whole point.",
+      ];
+      showMessage(quips[Math.floor(Math.random() * quips.length)], { from: 'player' });
+    };
+    $('dp-msg-casino').onclick = () => {
+      ensureOn();
+      showMessage('A whale just walked through the door!', { from: 'casino' });
+    };
+    $('dp-msg-inspect').onclick = () => {
+      ensureOn();
+      showMessage('An inspector is on the floor. Watch your back.', { from: 'inspect' });
+    };
+    $('dp-msg-trophy').onclick = () => {
+      ensureOn();
+      showMessage('High Roller — Hoard $50,000', { from: 'trophy', duration: 5000 });
+      setTimeout(() => showMessage('Money talks. Mine screams.', { from: 'player', duration: 5000 }), 300);
+    };
+    $('dp-msg-tutorial').onclick = () => {
+      ensureOn();
+      showMessage('Open the Shop and buy a roulette table.<div class="msg-hint">Press U or click Shop in the sidebar.</div>', { from: 'tutorial', persistent: true });
     };
 
     // Wipe
@@ -445,8 +556,6 @@ export class DevPanel {
 
     $('dp-casino').value = game.s.casino;
     $('dp-money').value = Math.floor(game.s.money);
-    $('dp-hopper').value = Math.floor(game.s.machineCash);
-
     const perf = $('dp-perf');
     perf.classList.toggle('dp-on', !!game.s.perfStats);
     $('dp-perf-label').textContent = game.s.perfStats ? 'ON' : 'OFF';
@@ -454,6 +563,10 @@ export class DevPanel {
     const uncap = $('dp-uncap');
     uncap.classList.toggle('dp-on', !!game.s.uncapFPS);
     $('dp-uncap-label').textContent = game.s.uncapFPS ? 'ON' : 'OFF';
+
+    const statmsg = $('dp-statmsg');
+    statmsg.classList.toggle('dp-on', !!game.s.showStatMessages);
+    $('dp-statmsg-label').textContent = game.s.showStatMessages ? 'ON' : 'OFF';
 
     const won = $('dp-won');
     won.classList.toggle('dp-on', !!game.s.won);
@@ -604,7 +717,7 @@ export class DevPanel {
   }
 
   _refreshTutorial() {
-    const STEP_NAMES = ['intro', 'buy_machine', 'place_it', 'nobody', 'advertise', 'first_guest', 'earn_500', 'done'];
+    const STEP_NAMES = ['intro', 'buy_table', 'place_it', 'nobody', 'advertise', 'first_guest', 'deal_roulette', 'buy_slot', 'place_slot', 'earn_500', 'done'];
     const step = game.s.tutorialStep || 0;
     const el = $('dp-tut-step');
     if (el) el.textContent = `${step} (${STEP_NAMES[step] || '?'})`;
@@ -626,7 +739,7 @@ export class DevPanel {
     }
     game.s.won = true;
     game.s.tutorialComplete = true;
-    game.s.tutorialStep = 7;
+    game.s.tutorialStep = 10;
     game.recompute(); game.save();
     game.emit('upgrade', {}); game.emit('skill', {});
     this.cbs.onCasinoChange(game.s.casino);

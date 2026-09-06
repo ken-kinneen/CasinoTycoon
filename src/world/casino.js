@@ -756,7 +756,6 @@ export class CasinoWorld {
       const cage = M.makeCashierCage(5); cage.position.set(-W / 2 + 8, 0.12, -D / 2 + 4); cage.rotation.y = Math.PI / 2; add(cage); this.addCollider(-W / 2 + 8, -D / 2 + 4, 0.6, 5);
       { const pl = M.makePlanter(); this.addProp(pl, 'Office Planter', -W / 2 + 0.7, -D / 2 + 0.8, 0.35, 0.35); }
       this.zones.office = { pos: new THREE.Vector3(-W / 2 + 4, 0, -D / 2 + 5.5), r: 2.0, label: 'Open Upgrades', key: 'office', icon: 'ledger' };
-      this.zones.safe = { pos: new THREE.Vector3(-W / 2 + 3, 0, -D / 2 + 8.5), r: 1.6, label: 'Vault crack', key: 'cashrun', icon: 'safe' };
     } else {
       const ox = -W / 2 + 3.2, oz = -D / 2 + 2.4;
       const desk = M.makeDesk(); desk.position.set(ox, 0.12, oz); add(desk); this.addCollider(ox, oz, 2.5, 1.3);
@@ -766,7 +765,6 @@ export class CasinoWorld {
       add(M.textPlane('OFFICE · STAFF ONLY (that means me)', { w: 4.2, h: 0.5, color: '#ffd700', glowColor: '#ffd700' }).translateX(-W / 2 + 3.2).translateY(3.0).translateZ(-D / 2 + 0.22));
       { const pl = M.makePlanter(); this.addProp(pl, 'Office Planter', -W / 2 + 0.7, -D / 2 + 0.8, 0.35, 0.35); }
       this.zones.office = { pos: new THREE.Vector3(ox, 0, oz + 1.3), r: 1.5, label: 'Open Upgrades', key: 'office', icon: 'ledger' };
-      this.zones.safe = { pos: new THREE.Vector3(-W / 2 + 2.9, 0, -D / 2 + 5.6), r: 1.6, label: 'Vault crack', key: 'cashrun', icon: 'safe' };
     }
 
     // =====================================================================

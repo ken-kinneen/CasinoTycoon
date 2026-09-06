@@ -28,7 +28,6 @@
       </div>
       <div class="sb-section">
         <div class="sb-label">CASINO</div>
-        <div class="sb-stat-row"><span class="ico-slot" id="ico-hopper"></span><span class="sb-stat-label">Hoppers</span><span class="sb-stat-val" id="hud-hopper">$0</span></div>
         <div class="sb-stat-row"><span class="ico-slot" id="ico-guests"></span><span class="sb-stat-label">Guests</span><span class="sb-stat-val" id="hud-guests">0 / 0</span></div>
         <div class="sb-stat-row"><span class="ico-slot" id="ico-heat"></span><span class="sb-stat-label">Heat</span><span class="sb-stat-val" id="hud-heat">0%</span></div>
       </div>
@@ -46,8 +45,8 @@
         <div class="sb-label">ACTIVITIES</div>
         <div class="sb-actions">
           <div class="sb-action" data-key="advertising"><span class="ico-slot" id="ico-hot-ads"></span><span class="sb-action-name">Advertise</span><kbd>1</kbd></div>
-          <div class="sb-action" data-key="cashrun"><span class="ico-slot" id="ico-hot-cash"></span><span class="sb-action-name">Vault Crack</span><kbd>2</kbd></div>
-          <div class="sb-action" data-key="dealer"><span class="ico-slot" id="ico-hot-deal"></span><span class="sb-action-name">Deal a Hand</span><kbd>3</kbd></div>
+          <div class="sb-action" data-key="dealer"><span class="ico-slot" id="ico-hot-deal"></span><span class="sb-action-name">Blackjack</span><kbd>2</kbd></div>
+          <div class="sb-action" data-key="roulette"><span class="ico-slot" id="ico-hot-roulette"></span><span class="sb-action-name">Roulette</span><kbd>3</kbd></div>
         </div>
       </div>
 
@@ -77,6 +76,9 @@
 
     <!-- toasts -->
     <div id="toasts"></div>
+
+    <!-- unified message banner -->
+    <div id="message-banner" class="hidden"></div>
 
     <!-- interact prompt -->
     <div class="hud-bottom">
@@ -135,7 +137,7 @@
     <div class="ledger-box">
       <aside class="ledger-rail">
         <div class="ledger-brand"><div class="ledger-title">SHOP</div><div class="ledger-tag">Every dollar is a decision.<br>Every decision is a crime.</div></div>
-        <div class="ledger-money-box"><div class="money-label">IN THE SAFE</div><div class="money" id="ledger-money">$200</div></div>
+        <div class="ledger-money-box"><div class="money-label">BALANCE</div><div class="money" id="ledger-money">$200</div></div>
         <nav class="ledger-tabs" id="ledger-tabs">
           <button data-tab="casino" class="active"><span class="ico-slot" data-ico="building"></span>Casino Upgrades</button>
           <button data-tab="ads"><span class="ico-slot" data-ico="billboard"></span>Advertising</button>
@@ -201,7 +203,7 @@
           <button class="btn-gold big" id="intro-start">OPEN THE DOORS</button>
           <button class="btn-ghost" id="intro-reset">Wipe the books</button>
         </div>
-        <div class="title-controls"><kbd>WASD</kbd> walk <kbd>F</kbd> interact <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> activities <kbd>U</kbd> shop <kbd>G</kbd> build <kbd>J</kbd> achievements</div>
+        <div class="title-controls"><kbd>WASD</kbd> walk <kbd>F</kbd> interact <kbd>1</kbd> advertise <kbd>2</kbd> blackjack <kbd>3</kbd> roulette <kbd>U</kbd> shop <kbd>G</kbd> build <kbd>J</kbd> achievements</div>
       </div>
     </div>
   </div>
@@ -212,8 +214,7 @@
       <div class="receipt-head"><span class="receipt-title">How to be terrible</span></div>
       <div class="help-grid">
         <div><b>Walk the floor.</b> <kbd>WASD</kbd> or arrows. Drag the mouse to orbit, scroll to zoom, <kbd>Q</kbd> spins the camera.</div>
-        <div><b>Work.</b> Walk up and press <kbd>F</kbd>: the street (ads), the safe (vault crack), the desk (shop). Click a table to deal. <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> jump straight there.</div>
-        <div><b>Hoppers.</b> Guests spend into their machine's hopper. It isn't yours until you haul it to the safe. A full hopper stops earning.</div>
+        <div><b>Work.</b> Walk up and press <kbd>F</kbd>: the street (ads), the desk (shop). Click a table to deal blackjack or roulette. <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> jump straight there.</div>
         <div><b>Heat.</b> How much the authorities notice you. Inspectors drop by; the envelope costs money. Bribes bring heat down.</div>
         <div><b>Guests.</b> Drunks have wide margins at the table. Sharps spend less and are hard to beat. Whales bet big and love prestige.</div>
         <div><b>The dream.</b> Buy the next casino from the Expansion tab. Skills and ad campaigns follow you. Vegas is the goal.</div>

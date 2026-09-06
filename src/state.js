@@ -27,8 +27,8 @@ export const STAT_META = {
   houseEdge:     { label: 'House Edge',         fmt: v => `x${v.toFixed(2)}`,                  good: +1 },
   heat:          { label: 'Heat',               fmt: v => `${Math.round(v)}%`,                 good: -1 },
   prestige:      { label: 'Prestige',           fmt: v => `${Math.round(v)}`,                  good: +1 },
-  autoCollect:   { label: 'Auto-collect',       fmt: v => `${Math.round(v * 100)}%/min`,       good: +1 },
-  hopperCap:     { label: 'Hopper Capacity',    fmt: v => `$${Math.round(v)}`,                 good: +1 },
+  autoCollect:   { label: 'Auto-collect',       fmt: v => `${Math.round(v * 100)}%/min`,       good: +1 },  // legacy
+  hopperCap:     { label: 'Hopper Capacity',    fmt: v => `$${Math.round(v)}`,                 good: +1 },  // legacy
   walkSpeed:     { label: 'Walk Speed',         fmt: v => `${v.toFixed(1)} m/s`,               good: +1 },
   cardWidth:     { label: 'Pocket Tolerance',   fmt: v => `x${v.toFixed(2)}`,                  good: +1 },
   cardTime:      { label: 'Ad Round Time',      fmt: v => `${Math.round(v)}s`,                 good: +1 },
@@ -38,7 +38,7 @@ export const STAT_META = {
 };
 
 // Which stats show on the casino stats panel (in order).
-export const CASINO_STAT_KEYS = ['machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'hopperCap', 'autoCollect', 'prestige', 'heat'];
+export const CASINO_STAT_KEYS = ['machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'prestige', 'heat'];
 export const PLAYER_STAT_KEYS = ['walkSpeed', 'cardWidth', 'cardTime', 'dealerMargin', 'dealerBet', 'dealerSpeed'];
 
 function freshState() {
@@ -50,7 +50,7 @@ function freshState() {
     casinoUpgrades: { duck: [], rat: [], diablo: [] },
     awards: [],
     skills: { sleight: 0, back: 0, poker: 0, tongue: 0, feet: 0 },
-    machineCash: 0,            // cash sitting in hoppers, not yet banked
+    machineCash: 0,            // legacy field, kept for save compat
     lifetimeEarned: 0,
     lifetimeCustomers: 0,
     playTime: 0,
@@ -68,6 +68,7 @@ function freshState() {
     godMode: false,
     perfStats: false,
     uncapFPS: false,
+    showStatMessages: false,
     openModal: null,           // 'settings' | 'help' | 'ledger:tab' | null
     playerX: null,             // saved player position (null = use default)
     playerZ: null,
@@ -242,7 +243,6 @@ class GameState {
     }
     st.heat = Math.max(0, Math.min(100, st.heat));
     st.sharpness = Math.max(0.05, Math.min(1, st.sharpness));
-    st.autoCollect = Math.min(0.9, st.autoCollect);
     st.prestige = Math.max(0, st.prestige);
     return st;
   }
@@ -336,7 +336,6 @@ class GameState {
   moveToCasino(index) {
     if (!this.s.ownedCasinos.includes(index)) return false;
     this.s.casino = index;
-    this.s.machineCash = 0;
     this.recompute();
     this.save();
     this.emit('casino', index);

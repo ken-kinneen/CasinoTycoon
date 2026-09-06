@@ -35,7 +35,7 @@ await page.screenshot({ path: `${OUT}/03-walk.png` });
 await page.evaluate(() => { const { customers } = window.__casino; customers.queue(6); });
 await page.evaluate(() => window.__casino.step(40)); await frames(2);
 await page.screenshot({ path: `${OUT}/04-customers.png` });
-const c2 = await page.evaluate(() => { const { customers, game } = window.__casino; return { count: customers.count, states: customers.customers.map(c => c.state + ':' + c.type), hopper: game.s.machineCash }; });
+const c2 = await page.evaluate(() => { const { customers, game } = window.__casino; return { count: customers.count, states: customers.customers.map(c => c.state + ':' + c.type), money: game.s.money }; });
 console.log('customers:', JSON.stringify(c2));
 
 // go to the street and start advertising
@@ -66,33 +66,31 @@ await page.screenshot({ path: `${OUT}/07-ad-result.png` });
 console.log('ad result text:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
 await page.click('#result-close');
 
-// cash run
-await page.evaluate(() => { const { world, game } = window.__casino; for (const m of world.machines) m.cash = 120; game.s.machineCash = world.machines.length * 120; });
+// blackjack (was cashrun) — force a customer to a table, then play
+await page.evaluate(() => { const { customers, world } = window.__casino; const c = customers.customers[0]; if (c) { if (c.machine) { c.machine.occupant = null; c.machine = null; } c.table = world.tables[0]; world.tables[0].occupants.push(c); c.state = 'using'; c.useTimer = 200; c.path = []; } });
 await page.keyboard.press('Digit2'); await frames(3);
-await page.keyboard.press('KeyE'); await frames(3);
-await page.screenshot({ path: `${OUT}/08-cashrun.png` });
+await page.keyboard.press('KeyE'); await page.waitForTimeout(2000);
+await page.screenshot({ path: `${OUT}/08-blackjack.png` });
 {
-  const stacks = await page.evaluate(() => window.__activeGame ? window.__activeGame.stacks.map(s => ({ x: s.x, y: s.y })) : []);
-  const safe = await page.evaluate(() => window.__activeGame.safe);
-  for (const s of stacks.slice(0, 4)) {
-    await page.evaluate(() => { window.__activeGame.doorT = 0; });
-    const [sx, sy] = toPage(s.x, s.y); const [tx, ty] = toPage(safe.x + safe.w / 2, safe.y + safe.h / 2);
-    await page.mouse.move(sx, sy); await page.mouse.down();
-    for (let i = 1; i <= 10; i++) { await page.mouse.move(sx + (tx - sx) * i / 10, sy + (ty - sy) * i / 10); await page.waitForTimeout(25); }
-    await page.waitForTimeout(120); await page.mouse.up(); await page.waitForTimeout(60);
+  // play blackjack: stand on every hand to finish quickly
+  for (let i = 0; i < 30; i++) {
+    const st = await page.evaluate(() => window.__activeGame ? { phase: window.__activeGame.phase, hand: window.__activeGame.hand, total: window.__activeGame.hands } : null);
+    if (!st) break;
+    if (st.phase === 'player') { await page.keyboard.press('KeyS'); await page.waitForTimeout(300); }
+    else { await page.waitForTimeout(200); }
+    const done = await page.evaluate(() => !document.getElementById('result').classList.contains('hidden'));
+    if (done) break;
   }
-  await page.screenshot({ path: `${OUT}/09-cashrun-play.png` });
-  await page.evaluate(() => window.__activeGame && (window.__activeGame.timeLeft = 0.01));
-  await page.waitForTimeout(600);
-  console.log('cash result:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
-  await page.click('#result-close');
+  await page.screenshot({ path: `${OUT}/09-blackjack-result.png` });
+  console.log('blackjack result:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
+  await page.click('#result-close').catch(() => {});
 }
 
-// dealer: force a customer to a table
+// roulette (was dealer): force a customer to a table
 await page.evaluate(() => { const { customers, world } = window.__casino; const c = customers.customers[0]; if (c) { if (c.machine) { c.machine.occupant = null; c.machine = null; } c.table = world.tables[0]; world.tables[0].occupants.push(c); c.state = 'using'; c.useTimer = 200; c.path = []; } });
 await page.keyboard.press('Digit3'); await frames(3);
 await page.keyboard.press('KeyE'); await page.waitForTimeout(2000);
-await page.screenshot({ path: `${OUT}/10-dealer.png` });
+await page.screenshot({ path: `${OUT}/10-roulette.png` });
 {
   // wait until the number is near the target and lock
   for (let i = 0; i < 400; i++) {
@@ -102,10 +100,10 @@ await page.screenshot({ path: `${OUT}/10-dealer.png` });
     await page.waitForTimeout(10);
   }
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${OUT}/11-dealer-result.png` });
+  await page.screenshot({ path: `${OUT}/11-roulette-result.png` });
   // let the remaining hands time out
   for (let i = 0; i < 60; i++) { const open = await page.evaluate(() => !document.getElementById('result').classList.contains('hidden')); if (open) break; await page.evaluate(() => { const g = window.__activeGame; if (g && g.phase === 'play') g.countdown = 0.01; }); await page.waitForTimeout(500); }
-  console.log('dealer result:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
+  console.log('roulette result:', await page.locator('#result-body').innerText().catch(() => 'n/a'));
   await page.click('#result-close').catch(() => {});
 }
 
