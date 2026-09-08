@@ -4,7 +4,7 @@ import { createRenderer, createScene, createCamera } from "./engine/scene.js";
 import { createPostFX } from "./engine/postfx.js";
 import { Player } from "./engine/player.js";
 import { CasinoWorld } from "./world/casino.js";
-import { CustomerManager } from "./world/customers.js";
+import { CustomerManager, TYPE_INFO, DIFFICULTY_TIERS } from "./world/customers.js";
 import { Effects } from "./world/effects.js";
 import { HUD, toast, quip } from "./ui/hud.js";
 import { Ledger } from "./ui/ledger.js";
@@ -12,6 +12,7 @@ import { AchievementsScreen } from "./ui/achievements.js";
 import { AdvertisingGame } from "./minigames/advertising.js";
 import { ClickSkillGame } from "./minigames/clickskill.js";
 import { MemoryGame } from "./minigames/memory.js";
+import { CashRunGame } from "./minigames/cashrun.js";
 import { DealerGame } from "./minigames/dealer.js";
 import { fmtMoney } from "./minigames/base.js";
 import { PedestrianManager } from "./world/pedestrians.js";
@@ -809,8 +810,8 @@ editor.onSelect = (info, screenPos) => {
     if (info.type === "Dealer Table" || info.type === "Blackjack Table" || info.type === "Roulette Table") {
         dealBtn.classList.remove("hidden");
         dealBtn.disabled = !info.canInteract;
-        dealBtn.title = info.canInteract ? "" : info.near ? "No players at the table" : "Walk closer to deal";
-        dealBtn.textContent = info.type === "Roulette Table" ? "Spin" : "Deal";
+        dealBtn.title = info.canInteract ? "" : "Walk closer to deal";
+        dealBtn.textContent = info.type === "Roulette Table" ? "Spin" : info.type === "Blackjack Table" ? "Crack" : "Deal";
     } else {
         dealBtn.classList.add("hidden");
     }
@@ -872,14 +873,60 @@ editor.onMoveUpdate = (sx, sy, valid, reason) => {
 };
 
 $("editor-move").onclick = () => { $("editor-info").classList.add("hidden"); editor.enterMoveMode(); };
+const AVATAR_CHOICES = [
+    { type: 'drunk',   difficulty: 'easy',   emoji: '\u{1F37A}' },
+    { type: 'regular', difficulty: 'medium', emoji: '\u{1F464}' },
+    { type: 'sharp',   difficulty: 'hard',   emoji: '\u{1F576}\uFE0F' },
+    { type: 'whale',   difficulty: 'hard',   emoji: '\u{1F433}' },
+];
+
+let _pendingGameKey = null;
+
+function showAvatarPicker(gameKey) {
+    const grid = $("avatar-picker-grid");
+    grid.innerHTML = '';
+    _pendingGameKey = gameKey;
+    const st = game.stats;
+    const betScale = Math.sqrt(st.spendPerMin / 40);
+    for (const av of AVATAR_CHOICES) {
+        const info = TYPE_INFO[av.type];
+        const tier = DIFFICULTY_TIERS[av.difficulty];
+        const bet = Math.round(info.bet * st.dealerBet * betScale * tier.betMul);
+        const card = document.createElement('div');
+        card.className = 'avatar-card';
+        card.innerHTML = `<div class="avatar-icon">${av.emoji}</div>`
+            + `<div class="avatar-label">${info.label}</div>`
+            + `<div class="avatar-diff ${av.difficulty}">${tier.label}</div>`
+            + `<div class="avatar-bet">${fmtMoney(bet)} bet</div>`;
+        card.onclick = () => {
+            $("avatar-picker").classList.add("hidden");
+            startActivity(_pendingGameKey, [{ type: av.type, difficulty: av.difficulty }]);
+            _pendingGameKey = null;
+        };
+        grid.appendChild(card);
+    }
+    $("avatar-picker").classList.remove("hidden");
+}
+
+$("avatar-picker-cancel").onclick = () => {
+    $("avatar-picker").classList.add("hidden");
+    _pendingGameKey = null;
+};
+
 $("editor-deal").onclick = () => {
     if (!editor.selected) return;
     const t = editor.selected.type;
     if (t !== "table" && t !== "blackjack" && t !== "roulette") return;
+    const gameKey = (tutorial.isActive() && tutorial.stepId === "deal_roulette")
+        ? "roulette"
+        : t === "roulette" ? "roulette" : t === "blackjack" ? "vault" : "memory";
     editor.deselect();
-    if (tutorial.isActive() && tutorial.stepId === "deal_roulette") startActivity("roulette");
-    else if (t === "roulette") startActivity("roulette");
-    else startActivity("memory");
+    const tablePlayers = customers.tablePlayers();
+    if (tablePlayers.length) {
+        startActivity(gameKey, tablePlayers);
+    } else {
+        showAvatarPicker(gameKey);
+    }
 };
 
 // Arrange Floor button in sidebar — toggles arrange mode
@@ -996,6 +1043,11 @@ function jumpTo(key) {
         if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
         return;
     }
+    if (key === "vault") {
+        if (world.blackjackTables && world.blackjackTables.length) player.teleport(world.blackjackTables[0].pos.x, world.blackjackTables[0].pos.z + 3);
+        else if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
+        return;
+    }
     const z = world.zones.office;
     if (z) player.teleport(z.pos.x, z.pos.z);
 }
@@ -1070,17 +1122,16 @@ function launchAdGame(ped) {
     activeGame.open(`Guide the card into ${victim.name}'s pocket without touching the fabric.`);
 }
 
-function startActivity(key) {
+function startActivity(key, players) {
   try {
     if (activeGame || modalOpen) return;
     if (key === "office") {
         toggleLedger("casino");
         return;
     }
-    const DEV_SKIP_PLAYERS = true;
-    if (!DEV_SKIP_PLAYERS && (key === "dealer" || key === "memory" || key === "roulette") && !customers.tablePlayers().length) {
-        showMessage("Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.", { from: "casino" });
-        quip("An empty table. My least favourite kind.");
+    const tablePlayers = players || customers.tablePlayers();
+    if ((key === "dealer" || key === "memory" || key === "roulette" || key === "vault") && !tablePlayers.length) {
+        showAvatarPicker(key);
         return;
     }
     player.enabled = false;
@@ -1092,7 +1143,7 @@ function startActivity(key) {
         if (!res.aborted) fn(res);
     };
     if (key === "dealer") {
-        activeGame = new ClickSkillGame(game, customers.tablePlayers());
+        activeGame = new ClickSkillGame(game, tablePlayers);
         activeGame.onDone = finish((res) => {
             game.save();
             const net = res.won - res.lost;
@@ -1109,7 +1160,7 @@ function startActivity(key) {
         });
         activeGame.open("Click the targets before they vanish. Hit enough to win the bet.");
     } else if (key === "memory") {
-        activeGame = new MemoryGame(game, customers.tablePlayers());
+        activeGame = new MemoryGame(game, tablePlayers);
         activeGame.onDone = finish((res) => {
             game.save();
             const net = res.won - res.lost;
@@ -1126,7 +1177,7 @@ function startActivity(key) {
         });
         activeGame.open("Memorize the number sequence, then enter it back. Click or type.");
     } else if (key === "roulette") {
-        activeGame = new DealerGame(game, customers.tablePlayers());
+        activeGame = new DealerGame(game, tablePlayers);
         activeGame.onDone = finish((res) => {
             game.save();
             const net = res.won - res.lost;
@@ -1162,6 +1213,23 @@ function startActivity(key) {
             }
         });
         activeGame.open("Stop the wheel near the target number. SPACE or click.");
+    } else if (key === "vault") {
+        activeGame = new CashRunGame(game, tablePlayers);
+        activeGame.onDone = finish((res) => {
+            game.save();
+            const net = res.won - res.lost;
+            const hadPerfect = res.hands.some((h) => h.perfect);
+            if (hadPerfect) sfx.play("triumph");
+            else if (net > 0) sfx.playRandom("chuckle", "happy", "ching");
+            else if (net < 0) sfx.playRandom("oof", "groan", "frustrate");
+            else sfx.play("huff");
+            showResult(
+                "Vault Crack",
+                `<div class="row"><span>Hands</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
+                net >= 0 ? "HOUSE" : "OUCH",
+            );
+        });
+        activeGame.open("Memorize the vault code, then enter it back. Click or type.");
     }
   } catch (err) {
     console.error("startActivity error:", err);
@@ -1198,7 +1266,10 @@ window.addEventListener("keydown", (e) => {
             setOpenModal(null);
         }
     } else if (e.code === "Escape") {
-        if (devPanel.open) devPanel.setOpen(false);
+        if (!$("avatar-picker").classList.contains("hidden")) {
+            $("avatar-picker").classList.add("hidden");
+            _pendingGameKey = null;
+        } else if (devPanel.open) devPanel.setOpen(false);
         else if (editor.selected) {
             /* editor handles its own Escape */
         } else if (arrangeMode) toggleArrangeMode(false);
@@ -1235,6 +1306,7 @@ window.addEventListener("keydown", (e) => {
     } else if (!modalOpen && e.code === "Digit1") jumpTo("advertising");
     else if (!modalOpen && e.code === "Digit2") jumpTo("dealer");
     else if (!modalOpen && e.code === "Digit3") jumpTo("roulette");
+    else if (!modalOpen && e.code === "Digit4") jumpTo("vault");
     else if (!modalOpen && e.code === "KeyG") toggleArrangeMode();
 });
 

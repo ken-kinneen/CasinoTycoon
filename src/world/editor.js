@@ -477,7 +477,7 @@ export class FloorEditor {
     }
     if (s.type === 'blackjack') {
       return { ...base, type: 'Blackjack Table', name: `Blackjack #${s.index + 1}`,
-        canInteract: near && d.occupants.length > 0,
+        canInteract: near,
         stats: [
           { label: 'Seats', value: `${d.occupants.length}/${d.seats.length}` },
           { label: 'Hopper', value: `$${Math.round(d.cash)}` },
@@ -486,7 +486,7 @@ export class FloorEditor {
     }
     if (s.type === 'roulette') {
       return { ...base, type: 'Roulette Table', name: `Roulette #${s.index + 1}`,
-        canInteract: near && d.occupants.length > 0,
+        canInteract: near,
         stats: [
           { label: 'Seats', value: `${d.occupants.length}/${d.seats.length}` },
           { label: 'Hopper', value: `$${Math.round(d.cash)}` },
@@ -494,7 +494,7 @@ export class FloorEditor {
         ] };
     }
     return { ...base, type: 'Dealer Table', name: `Table #${s.index + 1}`,
-      canInteract: near && d.occupants.length > 0,
+      canInteract: near,
       stats: [
         { label: 'Seats', value: `${d.occupants.length}/${d.seats.length}` },
         { label: 'Hopper', value: `$${Math.round(d.cash)}` },
@@ -529,8 +529,6 @@ export class FloorEditor {
       this._clickScreenPos = { x: e.clientX, y: e.clientY };
       if (this.arrangeMode) {
         this.select(picked);
-        this.enterMoveMode();
-      } else if (this._isSame(picked, this.selected)) {
         this.enterMoveMode();
       } else {
         this.select(picked);

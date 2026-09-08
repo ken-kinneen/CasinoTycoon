@@ -32,6 +32,9 @@ export class Player {
     this.walkT = 0;
     this.moving = false;
     this.enabled = true;
+    this.jumpVel = 0;
+    this.jumpY = 0;
+    this.grounded = true;
     this.model = null;
     this.dragging = false;
     this.orbitCooldown = 0;
@@ -88,6 +91,17 @@ export class Player {
       if (k.KeyE) this.camYaw -= dt * 2;
     }
 
+    // ---- 1b. Jump -----------------------------------------------------------
+    if (this.enabled && k.Space && this.grounded) {
+      this.jumpVel = 7.5;
+      this.grounded = false;
+    }
+    if (!this.grounded) {
+      this.jumpVel -= 22 * dt;          // gravity
+      this.jumpY += this.jumpVel * dt;
+      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpVel = 0; this.grounded = true; }
+    }
+
     // ---- 2. Derive camera forward & right on the XZ plane -------------------
     // Forward = from camera toward the look target, flattened to XZ, normalized.
     _forward.set(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw)).normalize();
@@ -130,13 +144,21 @@ export class Player {
 
     // ---- 5. Update model position & rotation --------------------------------
     this.model.position.copy(this.pos);
+    this.model.position.y = this.jumpY;
 
     let d = this.yaw - this.model.rotation.y;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.model.rotation.y += d * damp(12, dt);
 
-    animatePerson(this.model, dt, { walking: this.moving, walkT: this.walkT * 0.18 });
-    if (!this.moving) {
+    animatePerson(this.model, dt, { walking: this.moving && this.grounded, walkT: this.walkT * 0.18 });
+    if (!this.grounded) {
+      const u = this.model.userData;
+      const tuck = damp(10, dt);
+      u.legL.rotation.x += (-0.7 - u.legL.rotation.x) * tuck;
+      u.legR.rotation.x += (-0.7 - u.legR.rotation.x) * tuck;
+      u.armL.rotation.x += (-1.2 - u.armL.rotation.x) * tuck;
+      u.armR.rotation.x += (-1.2 - u.armR.rotation.x) * tuck;
+    } else if (!this.moving) {
       const u = this.model.userData;
       const armK = damp(8, dt);
       u.armL.rotation.x *= (1 - armK);
@@ -144,7 +166,7 @@ export class Player {
     }
 
     // ---- 6. Position the camera ---------------------------------------------
-    _target.set(this.pos.x, 1.45, this.pos.z);
+    _target.set(this.pos.x, 1.45 + this.jumpY, this.pos.z);
     _off.set(
       Math.sin(this.camYaw) * Math.cos(this.camPitch) * this.camDist,
       Math.sin(this.camPitch) * this.camDist + 0.5,

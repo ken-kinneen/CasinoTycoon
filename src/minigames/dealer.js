@@ -1,10 +1,8 @@
 // Roulette: a target number is drawn, a 10-second countdown starts and a ball
 // cursor sweeps around a circular wheel. Hit SPACE / click to stop it. Land on
 // or near the target and the house takes the bet. Bullseye (exact) pays 2x.
-import * as THREE from 'three';
 import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
 import { TYPE_INFO, DIFFICULTY_TIERS } from '../world/customers.js';
-import { makeOwner } from '../world/people.js';
 import * as sfx from '../audio/sfx.js';
 
 const QUIPS = {
@@ -36,51 +34,7 @@ export class DealerGame extends MiniGame {
     this.shake = 0;
     this.chips = [];
     this.bullseyeFlash = 0;
-    this._init3DPreview();
     this.setupHand();
-  }
-
-  _init3DPreview() {
-    const PW = 200, PH = 240;
-    this._pvCanvas3D = document.createElement('canvas');
-    this._pvCanvas3D.width = PW; this._pvCanvas3D.height = PH;
-    this._pvRenderer = new THREE.WebGLRenderer({ canvas: this._pvCanvas3D, alpha: true, antialias: true });
-    this._pvRenderer.setSize(PW, PH);
-    this._pvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this._pvRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this._pvRenderer.toneMappingExposure = 1.0;
-
-    this._pvScene = new THREE.Scene();
-    this._pvScene.add(new THREE.AmbientLight(0xffffff, 0.5));
-    const key = new THREE.DirectionalLight(0xffd080, 2.0);
-    key.position.set(2, 3, 3);
-    this._pvScene.add(key);
-    const rim = new THREE.DirectionalLight(0x3ddc84, 0.5);
-    rim.position.set(-2, 1, -2);
-    this._pvScene.add(rim);
-    const fill = new THREE.DirectionalLight(0xf5c542, 0.3);
-    fill.position.set(-1, 2, 1);
-    this._pvScene.add(fill);
-
-    this._pvCamera = new THREE.PerspectiveCamera(30, PW / PH, 0.1, 100);
-    this._pvCamera.position.set(0, 1.0, 4.8);
-    this._pvCamera.lookAt(0, 0.8, 0);
-
-    this._pvModel = makeOwner(this.game.s.skills, this.game.wardrobeMap());
-    this._pvModel.rotation.y = 0.3;
-    this._pvScene.add(this._pvModel);
-    this._pvAngle = 0.3;
-  }
-
-  _dispose3DPreview() {
-    if (this._pvRenderer) { this._pvRenderer.dispose(); this._pvRenderer = null; }
-    this._pvScene = null;
-    this._pvModel = null;
-  }
-
-  finish(result) {
-    this._dispose3DPreview();
-    super.finish(result);
   }
 
   burst(x, y, color, n = 20) {
@@ -104,7 +58,7 @@ export class DealerGame extends MiniGame {
       target: WHEEL_NUMBERS[Math.floor(Math.random() * WHEEL_NUMBERS.length)],
     };
     this.countdown = 10;
-    this.angularSpeed = 3.4 * st.dealerSpeed;
+    this.angularSpeed = 4.25 * st.dealerSpeed;
     this.angle = Math.random() * TWO_PI;
     this.locked = null;
     this.lockedAngle = null;
@@ -170,14 +124,6 @@ export class DealerGame extends MiniGame {
       p.life -= dt; if (p.life <= 0) this.chips.splice(i, 1);
     }
 
-    if (this._pvModel && this._pvRenderer) {
-      this._pvAngle += 0.006;
-      this._pvModel.rotation.y = this._pvAngle;
-      const u = this._pvModel.userData;
-      if (u && u.head) u.head.rotation.y = Math.sin(this.t * 0.7) * 0.15;
-      this._pvRenderer.render(this._pvScene, this._pvCamera);
-    }
-
     if (this.phase === 'intro') { this.phaseT -= dt; if (this.phaseT <= 0) this.phase = 'play'; return; }
     if (this.phase === 'play') {
       this.countdown -= dt;
@@ -200,9 +146,9 @@ export class DealerGame extends MiniGame {
     const felt = ctx.createRadialGradient(cx, cy - 260, 40, cx, cy, 640);
     felt.addColorStop(0, '#12492d'); felt.addColorStop(0.45, '#092e1d'); felt.addColorStop(1, '#03110b');
     ctx.fillStyle = felt;
-    ctx.fillRect(0, 62, GW, GH - 62);
+    ctx.fillRect(0, 50, GW, GH - 102);
     ctx.save(); ctx.globalAlpha = 0.035; ctx.strokeStyle = '#9fe8bd'; ctx.lineWidth = 1;
-    for (let x = 0; x < GW; x += 7) { ctx.beginPath(); ctx.moveTo(x, 62); ctx.lineTo(x, GH); ctx.stroke(); }
+    for (let x = 0; x < GW; x += 7) { ctx.beginPath(); ctx.moveTo(x, 50); ctx.lineTo(x, GH - 52); ctx.stroke(); }
     ctx.restore();
   }
 
@@ -333,29 +279,28 @@ export class DealerGame extends MiniGame {
     ctx.strokeStyle = this.rgba(PAL.gold, 0.15); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.arc(wcx, wcy, 22, 0, TWO_PI); ctx.stroke();
 
-    // show number in hub only after the ball stops
+    // hub content: result number OR countdown
     if (this.phase === 'result') {
       if (this.locked !== null) {
         const col = this.results[this.results.length - 1]?.hit ? PAL.green : PAL.red;
-        this.neon(ctx, `${this.locked}`, wcx, wcy - 32, 42, col, 'center', 16, 2);
+        this.neon(ctx, `${this.locked}`, wcx, wcy, 42, col, 'center', 16, 2);
       } else {
-        this.neon(ctx, '--', wcx, wcy - 32, 42, PAL.dim, 'center', 10, 2);
+        this.neon(ctx, '--', wcx, wcy, 42, PAL.dim, 'center', 10, 2);
       }
+    } else {
+      // countdown timer arc
+      const cdc = this.countdown < 3 ? PAL.red : PAL.gold;
+      const timerR = innerR - 20;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(wcx, wcy, timerR, 0, TWO_PI); ctx.stroke();
+      ctx.strokeStyle = cdc; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.shadowColor = cdc; ctx.shadowBlur = this.countdown < 3 ? 16 : 6;
+      ctx.beginPath(); ctx.arc(wcx, wcy, timerR, -Math.PI / 2, -Math.PI / 2 + TWO_PI * Math.max(0, this.countdown / 10)); ctx.stroke();
+      ctx.restore();
+      const puls = this.countdown < 3 ? 1 + Math.sin(t * 12) * 0.06 : 1;
+      this.neon(ctx, `${Math.max(0, Math.ceil(this.countdown))}`, wcx, wcy, 28 * puls, cdc, 'center', 8, 1);
     }
-
-    // countdown timer in hub
-    const cdc = this.countdown < 3 ? PAL.red : PAL.gold;
-    const timerR = innerR - 20;
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(wcx, wcy, timerR, 0, TWO_PI); ctx.stroke();
-    ctx.strokeStyle = cdc; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    ctx.shadowColor = cdc; ctx.shadowBlur = this.countdown < 3 ? 16 : 6;
-    ctx.beginPath(); ctx.arc(wcx, wcy, timerR, -Math.PI / 2, -Math.PI / 2 + TWO_PI * Math.max(0, this.countdown / 10)); ctx.stroke();
-    ctx.restore();
-    const puls = this.countdown < 3 ? 1 + Math.sin(t * 12) * 0.06 : 1;
-    this.neon(ctx, `${Math.max(0, Math.ceil(this.countdown))}`, wcx, wcy + 18, 22 * puls, cdc, 'center', 8, 1);
-    this.label(ctx, this.phase === 'result' ? 'stopped' : '', wcx, wcy + 42, 9, PAL.dim, 'center');
 
     // ball
     const ballR = outerR + 4;
@@ -391,108 +336,45 @@ export class DealerGame extends MiniGame {
     ctx.restore();
   }
 
-  /** Top-left: 3D player model + gambler info */
-  drawLeftPanel(ctx, cur) {
-    const t = this.t;
+  /** Unified HUD bar across the bottom */
+  drawHUD(ctx, cur) {
     const tint = { drunk: PAL.pink, regular: PAL.cyan, sharp: '#b39ddb', whale: PAL.gold }[cur.type] || PAL.cyan;
-
-    // panel bg
-    ctx.save();
-    ctx.fillStyle = 'rgba(8,6,14,0.88)';
-    this.roundRect(ctx, 12, 72, 210, 420, 10); ctx.fill();
-    ctx.strokeStyle = this.rgba(tint, 0.2); ctx.lineWidth = 1; ctx.stroke();
-    ctx.restore();
-
-    // spotlight
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const spot = ctx.createRadialGradient(117, 120, 10, 117, 200, 160);
-    spot.addColorStop(0, 'rgba(255,226,168,0.06)'); spot.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = spot; ctx.fillRect(12, 72, 210, 420);
-    ctx.restore();
-
-    // 3D player model
-    if (this._pvCanvas3D) {
-      ctx.drawImage(this._pvCanvas3D, 17, 78, 200, 240);
-    }
-    this.label(ctx, 'dealer', 117, 80, 9, PAL.dim, 'center');
-
-    // gambler info below model
-    this.panel(ctx, 22, 328, 190, 152, { accent: tint, corner: 10, r: 8 });
-    this.label(ctx, `spin ${this.hand + 1} of ${this.players.length}`, 117, 342, 10, PAL.dim, 'center');
-    this.neon(ctx, `${cur.label} gambler`, 117, 364, 18, tint, 'center', 8, 1);
+    const barH = 52;
+    const barY = GH - barH;
 
     ctx.save();
-    const bw = 52;
-    ctx.fillStyle = this.rgba(cur.tierColor, 0.18);
-    this.roundRect(ctx, 117 - bw / 2, 378, bw, 16, 3); ctx.fill();
-    ctx.strokeStyle = this.rgba(cur.tierColor, 0.5); ctx.lineWidth = 1; ctx.stroke();
-    this.label(ctx, cur.tierLabel, 117, 386, 8, cur.tierColor, 'center');
+    ctx.fillStyle = 'rgba(4,3,8,0.7)';
+    ctx.fillRect(0, barY, GW, barH);
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.15); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, barY); ctx.lineTo(GW, barY); ctx.stroke();
     ctx.restore();
 
-    // bet
-    this.label(ctx, 'bet', 44, 408, 9, PAL.dim);
-    this.neon(ctx, fmtMoney(cur.bet), 44, 426, 20, PAL.green, 'left', 8, 1);
+    const cy = barY + barH / 2;
 
-    // margin
-    this.label(ctx, 'margin', 140, 408, 9, PAL.dim);
-    this.neon(ctx, `±${cur.margin}`, 140, 426, 20, PAL.bone, 'left', 6, 1);
+    // left: gambler type + difficulty
+    this.label(ctx, `spin ${this.hand + 1}/${this.players.length}`, 24, cy - 10, 11, PAL.dim);
+    this.text(ctx, cur.label.toUpperCase(), 24, cy + 8, 18, tint, 'left', SERIF, 'bold');
+    this.text(ctx, cur.tierLabel.toUpperCase(), 140, cy + 8, 13, cur.tierColor, 'left', SERIF, '600');
 
-    // difficulty pips
-    const pips = Math.min(10, Math.round(cur.margin / 2));
-    for (let i = 0; i < 10; i++) {
-      ctx.fillStyle = i < pips ? this.rgba(PAL.green, 0.85) : 'rgba(255,255,255,0.08)';
-      this.roundRect(ctx, 34 + i * 17, 450, 13, 4, 2); ctx.fill();
-    }
-  }
+    // center-left: bet
+    this.label(ctx, 'bet', 240, cy - 10, 11, PAL.dim, 'left');
+    this.text(ctx, fmtMoney(cur.bet), 240, cy + 8, 20, PAL.green, 'left', SERIF, 'bold');
 
-  /** Top-right: target number + legend */
-  drawRightPanel(ctx, cur) {
-    const x = GW - 200, y = 72, w = 188, h = 200;
+    // center-right: margin
+    this.label(ctx, 'margin', 370, cy - 10, 11, PAL.dim, 'left');
+    this.text(ctx, `±${cur.margin}`, 370, cy + 8, 20, PAL.bone, 'left', SERIF, 'bold');
 
+    // right: target number with colored dot
+    this.label(ctx, 'target', GW - 90, cy - 10, 11, PAL.dim, 'left');
+    const numCol = cur.target === 0 ? '#0d6b35' : RED_NUMBERS.has(cur.target) ? '#9b1b2a' : '#252540';
     ctx.save();
-    ctx.fillStyle = 'rgba(8,6,14,0.88)';
-    this.roundRect(ctx, x, y, w, h, 10); ctx.fill();
-    ctx.strokeStyle = this.rgba(PAL.gold, 0.2); ctx.lineWidth = 1; ctx.stroke();
-    ctx.restore();
-
-    this.label(ctx, 'target number', x + w / 2, y + 20, 10, PAL.gold, 'center');
-
-    // colored chip behind number
-    const numCol = cur.target === 0 ? '#0d6b35' : RED_NUMBERS.has(cur.target) ? '#9b1b2a' : '#151528';
-    const chipCx = x + w / 2, chipCy = y + 78;
-    ctx.save();
-    ctx.shadowColor = numCol; ctx.shadowBlur = 12;
     ctx.fillStyle = numCol;
-    ctx.beginPath(); ctx.arc(chipCx, chipCy, 38, 0, TWO_PI); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(chipCx, chipCy, 38, 0, TWO_PI); ctx.stroke();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(chipCx, chipCy, 30, 0, TWO_PI); ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(GW - 80, cy + 8, 12, 0, TWO_PI); ctx.fill();
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.3); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(GW - 80, cy + 8, 12, 0, TWO_PI); ctx.stroke();
     ctx.restore();
-
-    this.neon(ctx, `${cur.target}`, chipCx, chipCy, 48, '#fff', 'center', 18, 2);
-
-    const colorLabel = cur.target === 0 ? 'GREEN' : RED_NUMBERS.has(cur.target) ? 'RED' : 'BLACK';
-    const labelCol = cur.target === 0 ? PAL.green : RED_NUMBERS.has(cur.target) ? PAL.red : PAL.dim;
-    this.label(ctx, colorLabel, x + w / 2, y + 128, 9, labelCol, 'center');
-
-    // legend
-    const ly = y + 152;
-    // gold = exact target
-    ctx.save();
-    ctx.strokeStyle = PAL.gold; ctx.lineWidth = 2.5; ctx.shadowColor = PAL.gold; ctx.shadowBlur = 6;
-    this.roundRect(ctx, x + 18, ly, 14, 10, 2); ctx.stroke();
-    ctx.restore();
-    this.label(ctx, 'exact (2x)', x + 38, ly + 5, 8, PAL.gold);
-
-    // green = margin range
-    ctx.save();
-    ctx.strokeStyle = PAL.green; ctx.lineWidth = 2; ctx.shadowColor = PAL.green; ctx.shadowBlur = 4;
-    this.roundRect(ctx, x + 18, ly + 20, 14, 10, 2); ctx.stroke();
-    ctx.restore();
-    this.label(ctx, `win zone (±${cur.margin})`, x + 38, ly + 25, 8, PAL.green);
+    this.text(ctx, `${cur.target}`, GW - 80, cy + 8, 16, '#fff', 'center', SERIF, 'bold');
+    this.text(ctx, `#${cur.target}`, GW - 56, cy + 8, 20, PAL.gold, 'left', SERIF, 'bold');
   }
 
   draw(ctx) {
@@ -509,8 +391,6 @@ export class DealerGame extends MiniGame {
     }
 
     this.drawFelt(ctx);
-    this.drawLeftPanel(ctx, cur);
-    this.drawRightPanel(ctx, cur);
 
     if (this.phase === 'play' || this.phase === 'result') {
       this.drawWheel(ctx, cur, t);
@@ -536,12 +416,12 @@ export class DealerGame extends MiniGame {
     if (this.phase === 'result') {
       const r = this.results[this.results.length - 1];
       if (r.bullseye) {
-        this.banner(ctx, `EXACT!  2x  +${fmtMoney(r.amount)}`, 530, PAL.gold, 36);
+        this.banner(ctx, `EXACT!  2x  +${fmtMoney(r.amount)}`, 510, PAL.gold, 36);
       } else {
-        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 530, r.hit ? PAL.gold : PAL.red, 32);
+        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 510, r.hit ? PAL.gold : PAL.red, 32);
       }
-      ctx.save(); ctx.font = `italic 17px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(r.quip, GW / 2, 574); ctx.restore();
+      ctx.save(); ctx.font = `italic 16px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(r.quip, GW / 2, 552); ctx.restore();
     }
 
     // flying chips
@@ -556,14 +436,19 @@ export class DealerGame extends MiniGame {
     }
     ctx.restore();
 
-    // top scoreline
-    this.vignette(ctx, 0.45);
-    ctx.fillStyle = 'rgba(4,3,8,0.75)'; ctx.fillRect(0, 0, GW, 62);
-    ctx.strokeStyle = this.rgba(PAL.gold, 0.28); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, 62); ctx.lineTo(GW, 62); ctx.stroke();
-    this.readout(ctx, 30, 20, 'house took', fmtMoney(this.won), PAL.green, 'left', 26);
-    this.readout(ctx, GW - 30, 20, 'paid out', fmtMoney(this.lost), this.lost ? PAL.red : PAL.dim, 'right', 26);
-    this.bulbs(ctx, GW / 2 - 110, 30, 220, t, { count: 9, color: PAL.gold, r: 2.6 });
+    // top score bar
+    this.vignette(ctx, 0.3);
+    ctx.fillStyle = 'rgba(4,3,8,0.7)'; ctx.fillRect(0, 0, GW, 50);
+    ctx.strokeStyle = this.rgba(PAL.gold, 0.15); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(GW, 50); ctx.stroke();
+
+    this.label(ctx, 'house took', 24, 14, 11, PAL.dim);
+    this.text(ctx, fmtMoney(this.won), 24, 34, 20, PAL.green, 'left', SERIF, 'bold');
+    this.label(ctx, 'paid out', GW - 24, 14, 11, PAL.dim, 'right');
+    this.text(ctx, fmtMoney(this.lost), GW - 24, 34, 20, this.lost ? PAL.red : PAL.dim, 'right', SERIF, 'bold');
+
+    // bottom HUD
+    this.drawHUD(ctx, cur);
     ctx.restore();
   }
 }
