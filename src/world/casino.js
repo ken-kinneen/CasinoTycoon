@@ -195,9 +195,9 @@ export class CasinoWorld {
     }
     const floor = M.box(W, 0.12, D, floorMat, 0, 0.06, 0);
     floor.receiveShadow = true; add(floor);
+    const marbleW = 4.2;
     if (tier > 0) {
       // marble walkway (rat + diablo only)
-      const marbleW = tier === 2 ? 4.2 : 4.2;
       const marble = M.texMat(T.marbleTexture(tier === 2 ? '#c8c0b4' : '#c8c0b4', tier === 2 ? '#a8a098' : '#a8a098', [1, 2]), { roughness: 0.3, metalness: 0.06, envMapIntensity: 0.1 });
       const walkLen = D - 2;
       add(M.box(marbleW, 0.13, walkLen, marble, 0, 0.065, D / 2 - walkLen / 2));
