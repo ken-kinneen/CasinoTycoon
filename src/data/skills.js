@@ -112,7 +112,6 @@ export const SKILLS = [
     blurb: 'Hustle. Move faster between activities, and word spreads faster too.',
     activity: 'Movement',
     perLevel: [
-      { stat: 'walkSpeed', mul: 1.15 },
       { stat: 'trafficPerMin', mul: 1.05 },
     ],
     cosmetic: ['Shined shoes', 'Red shoes', 'Cane', 'Gold cane', 'Cape'],

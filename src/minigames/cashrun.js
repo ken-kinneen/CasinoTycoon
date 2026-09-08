@@ -35,7 +35,7 @@ export class CashRunGame extends MiniGame {
   constructor(game, players) {
     super('BLACKJACK');
     this.game = game;
-    this.players = players.slice(0, 3);
+    this.players = players.length ? players.slice(0, 3) : [{ type: 'regular', difficulty: 'medium' }];
     this.hand = 0;
     this.results = [];
     this.won = 0;

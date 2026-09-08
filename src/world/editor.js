@@ -19,7 +19,7 @@ const _hit = new THREE.Vector3();
 
 function snap(v) { return Math.round(v / GRID) * GRID; }
 
-const FOOTPRINT = { machine: { hw: 0.55, hd: 0.55 }, table: { hw: 1.8, hd: 1.4 }, prop: { hw: 1.0, hd: 1.0 } };
+const FOOTPRINT = { machine: { hw: 0.55, hd: 0.55 }, table: { hw: 1.8, hd: 1.4 }, blackjack: { hw: 1.8, hd: 1.4 }, roulette: { hw: 1.8, hd: 1.4 }, prop: { hw: 1.0, hd: 1.0 } };
 
 export class FloorEditor {
   constructor(scene, camera, canvas, world) {
@@ -209,6 +209,8 @@ export class FloorEditor {
     const targets = [];
     for (const m of this.world.machines) m.group.traverse(c => { if (c.isMesh) targets.push(c); });
     for (const t of this.world.tables) t.group.traverse(c => { if (c.isMesh) targets.push(c); });
+    for (const t of (this.world.blackjackTables || [])) t.group.traverse(c => { if (c.isMesh) targets.push(c); });
+    for (const t of (this.world.rouletteTables || [])) t.group.traverse(c => { if (c.isMesh) targets.push(c); });
     for (const p of this.world.props) p.group.traverse(c => { if (c.isMesh) targets.push(c); });
     this._rayTargetsCache = targets;
     return targets;
@@ -228,6 +230,14 @@ export class FloorEditor {
     for (let i = 0; i < this.world.tables.length; i++) {
       if (this._isDescendant(hitObj, this.world.tables[i].group))
         return { type: 'table', index: i, obj: this.world.tables[i].group, data: this.world.tables[i] };
+    }
+    for (let i = 0; i < (this.world.blackjackTables || []).length; i++) {
+      if (this._isDescendant(hitObj, this.world.blackjackTables[i].group))
+        return { type: 'blackjack', index: i, obj: this.world.blackjackTables[i].group, data: this.world.blackjackTables[i] };
+    }
+    for (let i = 0; i < (this.world.rouletteTables || []).length; i++) {
+      if (this._isDescendant(hitObj, this.world.rouletteTables[i].group))
+        return { type: 'roulette', index: i, obj: this.world.rouletteTables[i].group, data: this.world.rouletteTables[i] };
     }
     for (let i = 0; i < this.world.props.length; i++) {
       if (this._isDescendant(hitObj, this.world.props[i].group))
@@ -338,7 +348,8 @@ export class FloorEditor {
     }
     const px = this.selected.obj.position.x;
     const pz = this.selected.obj.position.z;
-    const sc = this.selected.type === 'table' ? 2.0 : this.selected.type === 'prop' ? Math.max(this.selected.data.hw, this.selected.data.hd) * 1.1 : 1.0;
+    const isTable = this.selected.type === 'table' || this.selected.type === 'blackjack' || this.selected.type === 'roulette';
+    const sc = isTable ? 2.0 : this.selected.type === 'prop' ? Math.max(this.selected.data.hw, this.selected.data.hd) * 1.1 : 1.0;
     // start green confirm glow on the placed item
     this._confirmGlowMeshes = this._moveGlowMeshes || this._collectMeshes(this.selected.obj);
     this._confirmGlowTimer = 0;
@@ -408,6 +419,20 @@ export class FloorEditor {
       if (Math.abs(x - t.pos.x) < hw + tfp.hw &&
           Math.abs(z - t.pos.z) < hd + tfp.hd) return `Overlaps Table #${i + 1}`;
     }
+    for (let i = 0; i < (this.world.blackjackTables || []).length; i++) {
+      if (type === 'blackjack' && i === skipIndex) continue;
+      const t = this.world.blackjackTables[i];
+      const tfp = this._getRotatedFootprint(FOOTPRINT.blackjack, t.group.rotation.y);
+      if (Math.abs(x - t.pos.x) < hw + tfp.hw &&
+          Math.abs(z - t.pos.z) < hd + tfp.hd) return `Overlaps Blackjack Table #${i + 1}`;
+    }
+    for (let i = 0; i < (this.world.rouletteTables || []).length; i++) {
+      if (type === 'roulette' && i === skipIndex) continue;
+      const t = this.world.rouletteTables[i];
+      const tfp = this._getRotatedFootprint(FOOTPRINT.roulette, t.group.rotation.y);
+      if (Math.abs(x - t.pos.x) < hw + tfp.hw &&
+          Math.abs(z - t.pos.z) < hd + tfp.hd) return `Overlaps Roulette Table #${i + 1}`;
+    }
     for (let i = 0; i < this.world.props.length; i++) {
       if (type === 'prop' && i === skipIndex) continue;
       const p = this.world.props[i];
@@ -422,7 +447,8 @@ export class FloorEditor {
 
   isPlayerNear(item) {
     if (!item) return false;
-    return this.playerPos.distanceTo(item.data.pos) < (item.type === 'table' ? 5 : 3);
+    const isTable = item.type === 'table' || item.type === 'blackjack' || item.type === 'roulette';
+    return this.playerPos.distanceTo(item.data.pos) < (isTable ? 5 : 3);
   }
 
   // --- info for UI ----------------------------------------------------------
@@ -448,6 +474,24 @@ export class FloorEditor {
     if (s.type === 'prop') {
       return { ...base, type: d.name || 'Prop', name: d.name || `Prop #${s.index + 1}`,
         canInteract: false, stats: [] };
+    }
+    if (s.type === 'blackjack') {
+      return { ...base, type: 'Blackjack Table', name: `Blackjack #${s.index + 1}`,
+        canInteract: near && d.occupants.length > 0,
+        stats: [
+          { label: 'Seats', value: `${d.occupants.length}/${d.seats.length}` },
+          { label: 'Hopper', value: `$${Math.round(d.cash)}` },
+          { label: 'Status', value: d.occupants.length > 0 ? 'Active' : 'Empty' },
+        ] };
+    }
+    if (s.type === 'roulette') {
+      return { ...base, type: 'Roulette Table', name: `Roulette #${s.index + 1}`,
+        canInteract: near && d.occupants.length > 0,
+        stats: [
+          { label: 'Seats', value: `${d.occupants.length}/${d.seats.length}` },
+          { label: 'Hopper', value: `$${Math.round(d.cash)}` },
+          { label: 'Status', value: d.occupants.length > 0 ? 'Active' : 'Empty' },
+        ] };
     }
     return { ...base, type: 'Dealer Table', name: `Table #${s.index + 1}`,
       canInteract: near && d.occupants.length > 0,
@@ -570,13 +614,13 @@ export class FloorEditor {
       item.data.usePos.set(
         item.data.pos.x + Math.sin(ry) * 0.95, 0,
         item.data.pos.z + Math.cos(ry) * 0.95);
-    } else {
+    } else if (item.type === 'table' || item.type === 'blackjack' || item.type === 'roulette') {
       const p = item.data.pos;
       for (let i = 0; i < item.data.seats.length; i++) {
         const a = Math.PI * (0.25 + i * 0.25);
         item.data.seats[i].set(p.x + Math.cos(a) * 2.35, 0, p.z + Math.sin(a) * 1.95);
       }
-      item.data.dealerSpot.set(p.x, 0, p.z + 2.0);
+      if (item.data.dealerSpot) item.data.dealerSpot.set(p.x, 0, p.z + 2.0);
     }
   }
 
@@ -584,7 +628,8 @@ export class FloorEditor {
 
   spawnOutside(type, index) {
     if (!this.world) return;
-    const item = type === 'machine' ? this.world.machines[index] : this.world.tables[index];
+    const worldArr = type === 'machine' ? this.world.machines : type === 'blackjack' ? this.world.blackjackTables : type === 'roulette' ? this.world.rouletteTables : this.world.tables;
+    const item = worldArr[index];
     if (!item) return;
     const spawnX = (Math.random() - 0.5) * 6;
     const spawnZ = this.world.D / 2 + 4 + Math.random() * 2;
@@ -638,7 +683,8 @@ export class FloorEditor {
     }
     // project tooltip position during move mode
     if (this.moveMode && this.selected && this.onMoveUpdate) {
-      const h = this.selected.type === 'table' ? 3.5 : this.selected.type === 'prop' ? 3.8 : 3.2;
+      const isTable = this.selected.type === 'table' || this.selected.type === 'blackjack' || this.selected.type === 'roulette';
+      const h = isTable ? 3.5 : this.selected.type === 'prop' ? 3.8 : 3.2;
       const topPos = new THREE.Vector3(
         this.selected.obj.position.x, h,
         this.selected.obj.position.z
@@ -654,6 +700,8 @@ export class FloorEditor {
     return {
       machines: this.world.machines.map(m => ({ x: m.group.position.x, z: m.group.position.z, ry: m.group.rotation.y })),
       tables: this.world.tables.map(t => ({ x: t.group.position.x, z: t.group.position.z, ry: t.group.rotation.y })),
+      blackjack: (this.world.blackjackTables || []).map(t => ({ x: t.group.position.x, z: t.group.position.z, ry: t.group.rotation.y })),
+      roulette: (this.world.rouletteTables || []).map(t => ({ x: t.group.position.x, z: t.group.position.z, ry: t.group.rotation.y })),
       props: this.world.props.map(p => ({ name: p.name, x: p.group.position.x, z: p.group.position.z, ry: p.group.rotation.y })),
     };
   }
@@ -682,6 +730,22 @@ export class FloorEditor {
         t.dealerSpot.set(s.x, 0, s.z + 2.0);
       }
     }
+    const applyTableLayout = (layoutArr, worldArr) => {
+      if (!layoutArr || !worldArr) return;
+      for (let i = 0; i < Math.min(layoutArr.length, worldArr.length); i++) {
+        const s = layoutArr[i], t = worldArr[i];
+        t.group.position.set(s.x, t.group.position.y, s.z);
+        t.group.rotation.y = s.ry;
+        t.pos.set(s.x, 0, s.z);
+        for (let j = 0; j < t.seats.length; j++) {
+          const a = Math.PI * (0.25 + j * 0.25);
+          t.seats[j].set(s.x + Math.cos(a) * 2.35, 0, s.z + Math.sin(a) * 1.95);
+        }
+        if (t.dealerSpot) t.dealerSpot.set(s.x, 0, s.z + 2.0);
+      }
+    };
+    applyTableLayout(layout.blackjack, this.world.blackjackTables);
+    applyTableLayout(layout.roulette, this.world.rouletteTables);
     if (layout.props) {
       for (const saved of layout.props) {
         const p = this.world.props.find(wp => wp.name === saved.name);

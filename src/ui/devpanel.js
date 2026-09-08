@@ -729,6 +729,10 @@ export class DevPanel {
     game.s.ownedCasinos = [0, 1, 2];
     game.s.adUpgrades = AD_UPGRADES.map(u => u.id);
     for (const cid of CASINO_IDS) game.s.casinoUpgrades[cid] = CASINO_UPGRADES[cid].map(u => u.id);
+    for (const cid of CASINO_IDS) {
+      if (!game.s.machineCounts) game.s.machineCounts = {};
+      game.s.machineCounts[cid] = { machine: 10, blackjack: 4, roulette: 4 };
+    }
     for (const sk of SKILLS) game.s.skills[sk.id] = 5;
     for (const a of ACHIEVEMENTS) {
       if (!game.s.achievements.includes(a.id)) game.s.achievements.push(a.id);
@@ -750,6 +754,10 @@ export class DevPanel {
     if (!confirm('Reset all progression? (Money and casino stay the same)')) return;
     game.s.adUpgrades = [];
     for (const cid of CASINO_IDS) game.s.casinoUpgrades[cid] = [];
+    for (const cid of CASINO_IDS) {
+      if (!game.s.machineCounts) game.s.machineCounts = {};
+      game.s.machineCounts[cid] = { machine: 0, blackjack: 0, roulette: 0 };
+    }
     for (const sk of SKILLS) game.s.skills[sk.id] = 0;
     game.s.achievements = [];
     game.s.achItems = [];

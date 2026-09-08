@@ -129,9 +129,9 @@ export class Tutorial {
   }
 
   hasBoughtTable() {
-    return game.machineInventoryFor().includes('table')
-      || game.placedCount('table') >= 1
-      || game.ownedSpawnCount('table') > 0;
+    return game.machineInventoryFor().includes('roulette')
+      || game.placedCount('roulette') >= 1
+      || game.ownedSpawnCount('roulette') > 0;
   }
 
   hasPlacedTable() { return game.placedCount('table') >= 1; }

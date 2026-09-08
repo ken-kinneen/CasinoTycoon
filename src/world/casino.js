@@ -34,7 +34,7 @@ export class CasinoWorld {
     this.scene = scene;
     this.root = new THREE.Group();
     scene.add(this.root);
-    this.machines = []; this.tables = []; this.props = []; this.colliders = []; this.zones = {}; this.animated = []; this.lampXs = [];
+    this.machines = []; this.tables = []; this.blackjackTables = []; this.rouletteTables = []; this.props = []; this.colliders = []; this.zones = {}; this.animated = []; this.lampXs = [];
   }
 
   clear() {
@@ -42,7 +42,7 @@ export class CasinoWorld {
     this.scene.remove(this.root);
     this.root = new THREE.Group();
     this.scene.add(this.root);
-    this.machines = []; this.tables = []; this.props = []; this.colliders = []; this.zones = {}; this.animated = []; this.lampXs = []; this.neonSigns = [];
+    this.machines = []; this.tables = []; this.blackjackTables = []; this.rouletteTables = []; this.props = []; this.colliders = []; this.zones = {}; this.animated = []; this.lampXs = []; this.neonSigns = [];
   }
 
   addCollider(x, z, w, d, dynamic = false, wall = false, label = '') { this.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, dynamic, wall, label }); }
@@ -51,6 +51,12 @@ export class CasinoWorld {
     this.colliders = this.colliders.filter(c => !c.dynamic);
     for (const a of this.animated) { if (a.collider) a.collider = null; }
     for (const t of this.tables) {
+      this.addCollider(t.group.position.x, t.group.position.z, 3.4, 2.6, true);
+    }
+    for (const t of this.blackjackTables) {
+      this.addCollider(t.group.position.x, t.group.position.z, 3.4, 2.6, true);
+    }
+    for (const t of this.rouletteTables) {
       this.addCollider(t.group.position.x, t.group.position.z, 3.4, 2.6, true);
     }
     for (const m of this.machines) {
@@ -910,6 +916,8 @@ export class CasinoWorld {
     const floorLayout = (game.s.floorLayouts || {})[def.id];
     const tableEntries = floorLayout?.tables || [];
     const machineEntries = floorLayout?.machines || [];
+    const blackjackEntries = floorLayout?.blackjack || [];
+    const rouletteEntries = floorLayout?.roulette || [];
     const marbleHalfW = def.id === 'duck' ? 2.0 : 2.5;
     const tableOffsetX = marbleHalfW + 2.5;
 
@@ -943,22 +951,54 @@ export class CasinoWorld {
 
     for (const s of tableEntries) placeTableAt(s.x, s.z, s.ry || 0);
 
-    // dealer zone removed — tables are now interacted with via the click/info panel
-    if (has('roulette')) {
-      const ROUL_HW = 1.2, ROUL_HD = 2.0;
-      let rx = -tableOffsetX - 4.5, rz = 0;
-      if (clashes(rx, rz, ROUL_HW, ROUL_HD)) {
-        for (let nudge = 1; nudge <= 10; nudge++) {
-          if (!clashes(rx, rz + nudge * 2, ROUL_HW, ROUL_HD)) { rz += nudge * 2; break; }
-          if (!clashes(rx, rz - nudge * 2, ROUL_HW, ROUL_HD)) { rz -= nudge * 2; break; }
-        }
+    // --- BLACKJACK TABLES: placed from floorLayout.blackjack ---
+    const placeBlackjackAt = (sx, sz, ry = 0) => {
+      const p = clampXZ(sx, sz, 3);
+      const x = p.x, z = p.z;
+      const t = M.makeDealerTable(P.felt, initials);
+      t.position.set(x, 0.12, z);
+      t.rotation.y = ry;
+      add(t);
+      this.addCollider(x, z, 3.4, 2.6, true);
+      occupy(x, z, TABLE_HW, TABLE_HD);
+      const seats = [];
+      for (let s = 0; s < 3; s++) {
+        const a = Math.PI * (0.25 + s * 0.25) + ry;
+        seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95));
       }
-      rx = Math.max(-W / 2 + 3, rx);
-      const r = M.makeRouletteTable(); r.rotation.y = Math.PI / 2;
-      this.addProp(r, 'Roulette', rx, rz, ROUL_HW, ROUL_HD);
-      occupy(rx, rz, ROUL_HW, ROUL_HD);
+      seats.push(new THREE.Vector3(x - 2.2, 0, z + 0.9));
+      this.blackjackTables.push({
+        group: t, pos: new THREE.Vector3(x, 0, z), seats,
+        dealerSpot: new THREE.Vector3(x, 0, z + 2.0),
+        occupants: [], cash: 0, aisleZ: z + 2.6,
+      });
+    };
+    for (const s of blackjackEntries) placeBlackjackAt(s.x, s.z, s.ry || 0);
+
+    // --- ROULETTE TABLES: placed from floorLayout.roulette ---
+    const ROUL_HW = 1.2, ROUL_HD = 2.0;
+    const placeRouletteAt = (sx, sz, ry = 0) => {
+      const p = clampXZ(sx, sz, 3);
+      const x = p.x, z = p.z;
+      const r = M.makeRouletteTable();
+      r.position.set(x, 0.12, z);
+      r.rotation.y = ry;
+      add(r);
+      this.addCollider(x, z, 3.4, 2.6, true);
+      occupy(x, z, ROUL_HW, ROUL_HD);
+      const seats = [];
+      for (let s = 0; s < 3; s++) {
+        const a = Math.PI * (0.25 + s * 0.25) + ry;
+        seats.push(new THREE.Vector3(x + Math.cos(a) * 2.35, 0, z + Math.sin(a) * 1.95));
+      }
+      this.rouletteTables.push({
+        group: r, pos: new THREE.Vector3(x, 0, z), seats,
+        dealerSpot: new THREE.Vector3(x, 0, z + 2.0),
+        occupants: [], cash: 0, aisleZ: z + 2.6,
+      });
       this.animated.push({ type: 'wheel', obj: r.userData.wheel });
-    }
+    };
+    for (const s of rouletteEntries) placeRouletteAt(s.x, s.z, s.ry || 0);
 
     // --- SLOT MACHINES: one mesh per layout entry at its saved position ---
     for (let i = 0; i < machineEntries.length; i++) {
@@ -1018,6 +1058,8 @@ export class CasinoWorld {
     const interactive = new Set();
     for (const m of this.machines) this._markSubtree(m.group, interactive);
     for (const t of this.tables) this._markSubtree(t.group, interactive);
+    for (const t of this.blackjackTables) this._markSubtree(t.group, interactive);
+    for (const t of this.rouletteTables) this._markSubtree(t.group, interactive);
     for (const p of this.props) this._markSubtree(p.group, interactive);
     for (const a of this.animated) {
       if (a.obj && a.obj.isObject3D) this._markSubtree(a.obj, interactive);
@@ -1071,7 +1113,11 @@ export class CasinoWorld {
   }
 
   freeMachine() { const free = this.machines.filter(m => !m.occupant); return free.length ? free[Math.floor(Math.random() * free.length)] : null; }
-  freeTableSeat() { for (const t of this.tables) if (t.occupants.length < t.seats.length) return t; return null; }
+  freeTableSeat() {
+    const allTables = [...this.tables, ...this.blackjackTables, ...this.rouletteTables];
+    for (const t of allTables) if (t.occupants.length < t.seats.length) return t;
+    return null;
+  }
 
   /** Waypoints from the door to a spot on the floor (machine or table seat). */
   pathTo(fromPos, target, targetAisleZ) {

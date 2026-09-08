@@ -1,5 +1,5 @@
 import { CASINOS, CUSTOMER_TYPES } from './data/casinos.js';
-import { AD_UPGRADES, CASINO_UPGRADES, AWARDS } from './data/upgrades.js';
+import { AD_UPGRADES, CASINO_UPGRADES, MACHINE_SHOP, AWARDS } from './data/upgrades.js';
 import { SKILLS, SKILL_COSTS, COSMETICS, COSMETIC_SLOTS } from './data/skills.js';
 import { ACHIEVEMENTS } from './data/achievements.js';
 
@@ -20,6 +20,8 @@ export const STAT_META = {
   capacity:      { label: 'Guest Capacity',     fmt: v => `${Math.round(v)}`,                  good: +1 },
   machines:      { label: 'Slot Machines',      fmt: v => `${Math.round(v)}`,                  good: +1 },
   tables:        { label: 'Dealer Tables',      fmt: v => `${Math.round(v)}`,                  good: +1 },
+  blackjack:     { label: 'Blackjack Tables',  fmt: v => `${Math.round(v)}`,                  good: +1 },
+  roulette:      { label: 'Roulette Tables',   fmt: v => `${Math.round(v)}`,                  good: +1 },
   trafficPerMin: { label: 'Walk-in Traffic',    fmt: v => `${v.toFixed(2)}/min`,               good: +1 },
   spendPerMin:   { label: 'Spend per Guest',    fmt: v => `$${v.toFixed(1)}/min`,              good: +1 },
   stayTime:      { label: 'Guest Stay Time',    fmt: v => `${Math.round(v)}s`,                 good: +1 },
@@ -38,7 +40,7 @@ export const STAT_META = {
 };
 
 // Which stats show on the casino stats panel (in order).
-export const CASINO_STAT_KEYS = ['machines', 'tables', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'prestige', 'heat'];
+export const CASINO_STAT_KEYS = ['machines', 'blackjack', 'roulette', 'trafficPerMin', 'spendPerMin', 'stayTime', 'sharpness', 'houseEdge', 'prestige', 'heat'];
 export const PLAYER_STAT_KEYS = ['walkSpeed', 'cardWidth', 'cardTime', 'dealerMargin', 'dealerBet', 'dealerSpeed'];
 
 function freshState() {
@@ -63,6 +65,7 @@ function freshState() {
     playerName: 'Victor Vane',
     casinoNames: {},           // { duck: 'My Casino', ... } — overrides per casino
     floorLayouts: {},          // { duck: { machines: [...], tables: [...] }, ... } — custom positions
+    machineCounts: { duck: { machine: 0, blackjack: 0, roulette: 0 }, rat: { machine: 0, blackjack: 0, roulette: 0 }, diablo: { machine: 0, blackjack: 0, roulette: 0 } },
     machineInventory: { duck: [], rat: [], diablo: [] }, // unplaced 'machine' | 'table' per casino
     wardrobe: {},              // { hat: 'poker_5', glasses: 'poker_2', ... } — equipped cosmetic per slot
     lighting: { bloom: 20, exposure: 85, grain: 12, vignette: 45 },
@@ -118,7 +121,14 @@ class GameState {
           this.s.equippedItems = [...(this.s.achItems || [])];
         }
         if (!this.s.achCosmetics) this.s.achCosmetics = [];
-        // Always reconcile: owned upgrades − placed floor items = inventory
+        // Merge machineCounts with defaults
+        if (!this.s.machineCounts) this.s.machineCounts = freshState().machineCounts;
+        for (const cid of ['duck', 'rat', 'diablo']) {
+          if (!this.s.machineCounts[cid]) this.s.machineCounts[cid] = { machine: 0, blackjack: 0, roulette: 0 };
+        }
+        // Migrate: count machines/tables from old spawn-based upgrades into machineCounts
+        this._migrateSpawnUpgrades();
+        // Always reconcile: owned counts − placed floor items = inventory
         this.reconcileMachineInventory();
       }
     } catch (e) { this.s = freshState(); }
@@ -128,6 +138,37 @@ class GameState {
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
     this.recompute();
     this.emit('reset');
+  }
+
+  /** One-time migration: convert old spawn-based upgrade ownership into machineCounts. */
+  _migrateSpawnUpgrades() {
+    if (this.s._spawnsMigrated) return;
+    const LEGACY_SPAWNS = {
+      duck: [
+        { id: 'd_slot1', type: 'machine', count: 1 }, { id: 'd_roulette1', type: 'roulette', count: 1 },
+        { id: 'd_slots1', type: 'machine', count: 2 }, { id: 'd_slots2', type: 'machine', count: 4 },
+      ],
+      rat: [
+        { id: 'r_slots0', type: 'machine', count: 4 }, { id: 'r_table0', type: 'blackjack', count: 1 },
+        { id: 'r_slots1', type: 'machine', count: 6 }, { id: 'r_table', type: 'blackjack', count: 1 },
+        { id: 'r_roulette', type: 'roulette', count: 1 }, { id: 'r_slots2', type: 'machine', count: 8 },
+      ],
+      diablo: [
+        { id: 'p_floor0', type: 'machine', count: 10 }, { id: 'p_tables0', type: 'blackjack', count: 2 },
+        { id: 'p_slots1', type: 'machine', count: 10 }, { id: 'p_tables', type: 'blackjack', count: 2 },
+        { id: 'p_slots2', type: 'machine', count: 15 },
+      ],
+    };
+    for (const cid of ['duck', 'rat', 'diablo']) {
+      const owned = this.s.casinoUpgrades[cid] || [];
+      const counts = this.s.machineCounts[cid];
+      for (const sp of (LEGACY_SPAWNS[cid] || [])) {
+        if (owned.includes(sp.id)) {
+          counts[sp.type] = (counts[sp.type] || 0) + sp.count;
+        }
+      }
+    }
+    this.s._spawnsMigrated = true;
   }
 
   // ---- derived stats ----------------------------------------------------
@@ -156,13 +197,15 @@ class GameState {
     return out;
   }
 
-  /** Count of machines/tables physically placed on the current casino floor. */
+  /** Count of machines/tables/blackjack/roulette physically placed on the current casino floor. */
   placedCount(type, casinoId) {
     const cid = casinoId || this.casinoDef.id;
     const layout = (this.s.floorLayouts || {})[cid];
     if (!layout) return 0;
     if (type === 'machine') return (layout.machines || []).length;
     if (type === 'table') return (layout.tables || []).length;
+    if (type === 'blackjack') return (layout.blackjack || []).length;
+    if (type === 'roulette') return (layout.roulette || []).length;
     return 0;
   }
 
@@ -173,14 +216,11 @@ class GameState {
     return this.s.machineInventory[cid];
   }
 
-  /** Total machines/tables owned via upgrades and achievements (placed + inventory). */
+  /** Total machines/tables owned (placed + inventory). */
   ownedSpawnCount(type, casinoId) {
     const cid = casinoId || this.casinoDef.id;
-    let n = 0;
-    for (const u of CASINO_UPGRADES[cid] || []) {
-      if (!this.s.casinoUpgrades[cid]?.includes(u.id) || !u.spawns) continue;
-      if (u.spawns.type === type) n += u.spawns.count;
-    }
+    const counts = this.s.machineCounts?.[cid] || {};
+    let n = counts[type] || 0;
     for (const a of ACHIEVEMENTS) {
       if (!a.spawns || a.spawns.type !== type) continue;
       if (this.s.achievements.includes(a.id)) n += a.spawns.count;
@@ -212,12 +252,14 @@ class GameState {
   /** Rebuild inventory so owned - placed = unplaced. Recovers lost items. */
   reconcileMachineInventory() {
     if (!this.s.machineInventory) this.s.machineInventory = { duck: [], rat: [], diablo: [] };
-    for (const cid of Object.keys(CASINO_UPGRADES)) {
+    for (const cid of ['duck', 'rat', 'diablo']) {
       const needM = Math.max(0, this.ownedSpawnCount('machine', cid) - this.placedCount('machine', cid));
-      const needT = Math.max(0, this.ownedSpawnCount('table', cid) - this.placedCount('table', cid));
+      const needBJ = Math.max(0, this.ownedSpawnCount('blackjack', cid) - this.placedCount('blackjack', cid));
+      const needR = Math.max(0, this.ownedSpawnCount('roulette', cid) - this.placedCount('roulette', cid));
       this.s.machineInventory[cid] = [
         ...Array(needM).fill('machine'),
-        ...Array(needT).fill('table'),
+        ...Array(needBJ).fill('blackjack'),
+        ...Array(needR).fill('roulette'),
       ];
     }
   }
@@ -241,10 +283,14 @@ class GameState {
     // Floor is the source of truth for physical equipment
     st.machines = this.placedCount('machine');
     st.tables = this.placedCount('table');
+    st.blackjack = this.placedCount('blackjack');
+    st.roulette = this.placedCount('roulette');
     // Hypothetical previews: extraEffects may include machines/tables for shop deltas
     for (const e of extraEffects) {
       if (e.stat === 'machines' && e.add) st.machines += e.add;
       if (e.stat === 'tables' && e.add) st.tables += e.add;
+      if (e.stat === 'blackjack' && e.add) st.blackjack += e.add;
+      if (e.stat === 'roulette' && e.add) st.roulette += e.add;
     }
     st.heat = Math.max(0, Math.min(100, st.heat));
     st.sharpness = Math.max(0.05, Math.min(1, st.sharpness));
@@ -274,8 +320,9 @@ class GameState {
   /** Preview for a spawn upgrade (machines go to inventory, not floor yet). */
   previewSpawns(u) {
     if (!u.spawns) return [];
-    const key = u.spawns.type === 'machine' ? 'machines' : 'tables';
-    const from = this.stats[key];
+    const typeToKey = { machine: 'machines', table: 'tables', blackjack: 'blackjack', roulette: 'roulette' };
+    const key = typeToKey[u.spawns.type] || 'tables';
+    const from = this.stats[key] || 0;
     return [{ key, from, to: from + u.spawns.count, inventory: true }];
   }
 
@@ -306,9 +353,30 @@ class GameState {
     const u = CASINO_UPGRADES[cid].find(x => x.id === id);
     if (!u || this.s.casinoUpgrades[cid].includes(id) || !this.spend(u.cost)) return false;
     this.s.casinoUpgrades[cid].push(id);
-    this.addSpawnsToInventory(u, cid);
-    this.reconcileMachineInventory();
     this.afterPurchase(u);
+    return true;
+  }
+
+  /** Cost of the next machine of this type at the current casino. */
+  machineCost(type) {
+    const shop = MACHINE_SHOP.find(m => m.id === type);
+    if (!shop) return Infinity;
+    const cid = this.casinoDef.id;
+    const owned = (this.s.machineCounts[cid]?.[type]) || 0;
+    return Math.round(shop.baseCost * Math.pow(shop.costScale, owned));
+  }
+
+  /** Buy one machine/table — repeatable purchase with scaling cost. */
+  buyMachine(type) {
+    const cost = this.machineCost(type);
+    if (!this.spend(cost)) return false;
+    const cid = this.casinoDef.id;
+    if (!this.s.machineCounts[cid]) this.s.machineCounts[cid] = { machine: 0, blackjack: 0, roulette: 0 };
+    this.s.machineCounts[cid][type] = (this.s.machineCounts[cid][type] || 0) + 1;
+    this.machineInventoryFor(cid).push(type);
+    this.recompute();
+    this.save();
+    this.emit('upgrade', { spawns: { type, count: 1 } });
     return true;
   }
   buyAward(id) {
@@ -391,7 +459,6 @@ class GameState {
       }
     }
     if (a.spawns) {
-      this.addSpawnsToInventory(a);
       this.reconcileMachineInventory();
     }
     this.recompute();
@@ -558,8 +625,12 @@ class GameState {
       this.s.machineInventory = { ...freshState().machineInventory, ...(sl.state.machineInventory || {}) };
       this.s.wardrobe = { ...freshState().wardrobe, ...(sl.state.wardrobe || {}) };
       this.s.lighting = { ...freshState().lighting, ...(sl.state.lighting || {}) };
-      if (!sl.state.machineInventory) this.reconcileMachineInventory();
-      else this.reconcileMachineInventory();
+      if (!this.s.machineCounts) this.s.machineCounts = freshState().machineCounts;
+      for (const cid of ['duck', 'rat', 'diablo']) {
+        if (!this.s.machineCounts[cid]) this.s.machineCounts[cid] = { machine: 0, blackjack: 0, roulette: 0 };
+      }
+      this._migrateSpawnUpgrades();
+      this.reconcileMachineInventory();
     this.recompute();
     this.save();
     this.emit('reset');
@@ -577,4 +648,4 @@ class GameState {
 }
 
 export const game = new GameState();
-export { CASINOS, CUSTOMER_TYPES, AD_UPGRADES, CASINO_UPGRADES, AWARDS, SKILLS, SKILL_COSTS, ACHIEVEMENTS, COSMETICS, COSMETIC_SLOTS };
+export { CASINOS, CUSTOMER_TYPES, AD_UPGRADES, CASINO_UPGRADES, MACHINE_SHOP, AWARDS, SKILLS, SKILL_COSTS, ACHIEVEMENTS, COSMETICS, COSMETIC_SLOTS };

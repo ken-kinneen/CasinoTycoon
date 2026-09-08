@@ -10,7 +10,8 @@ import { HUD, toast, quip } from "./ui/hud.js";
 import { Ledger } from "./ui/ledger.js";
 import { AchievementsScreen } from "./ui/achievements.js";
 import { AdvertisingGame } from "./minigames/advertising.js";
-import { CashRunGame } from "./minigames/cashrun.js";
+import { ClickSkillGame } from "./minigames/clickskill.js";
+import { MemoryGame } from "./minigames/memory.js";
 import { DealerGame } from "./minigames/dealer.js";
 import { fmtMoney } from "./minigames/base.js";
 import { PedestrianManager } from "./world/pedestrians.js";
@@ -85,8 +86,8 @@ const PLACEABLE_NAMES = {
     chandelier: "Crystal Chandelier",
 };
 
-const MACHINE_INV_NAMES = { machine: "Slot Machine", table: "Dealer Table" };
-const MACHINE_INV_MODELS = { machine: "machines", table: "tables" };
+const MACHINE_INV_NAMES = { machine: "Slot Machine", blackjack: "Blackjack Table", roulette: "Roulette Table", table: "Dealer Table" };
+const MACHINE_INV_MODELS = { machine: "machines", blackjack: "blackjacktables", roulette: "roulettetables", table: "tables" };
 
 let buildHighlight = null;
 let _pendingPlaceKey = null;
@@ -95,10 +96,12 @@ let _placingFromInventory = null;
 function ensureFloorLayout() {
     const cid = game.casinoDef.id;
     if (!game.s.floorLayouts) game.s.floorLayouts = {};
-    if (!game.s.floorLayouts[cid]) game.s.floorLayouts[cid] = { machines: [], tables: [], props: [] };
+    if (!game.s.floorLayouts[cid]) game.s.floorLayouts[cid] = { machines: [], tables: [], blackjack: [], roulette: [], props: [] };
     const L = game.s.floorLayouts[cid];
     if (!L.machines) L.machines = [];
     if (!L.tables) L.tables = [];
+    if (!L.blackjack) L.blackjack = [];
+    if (!L.roulette) L.roulette = [];
     if (!L.props) L.props = [];
     return L;
 }
@@ -121,19 +124,21 @@ function beginPlaceMachine(type) {
     const layout = ensureFloorLayout();
     // Safe center of the floor — player position was causing invalid/out-of-bounds spawns
     const entry = { x: 0, z: 0, ry: 0 };
-    if (type === "machine") layout.machines.push(entry);
-    else layout.tables.push(entry);
+    const layoutKey = type === "machine" ? "machines" : type === "blackjack" ? "blackjack" : type === "roulette" ? "roulette" : "tables";
+    layout[layoutKey].push(entry);
 
     game.recompute();
     game.save();
     rebuildWorld();
 
-    const arr = type === "machine" ? world.machines : world.tables;
+    const worldKey = type === "machine" ? "machines" : type === "blackjack" ? "blackjackTables" : type === "roulette" ? "rouletteTables" : "tables";
+    const arr = world[worldKey];
     const index = arr.length - 1;
+    const editorType = type === "blackjack" ? "blackjack" : type === "roulette" ? "roulette" : type;
     const item = arr[index];
     if (!item) {
         // Mesh failed to spawn — roll back so the item is not lost
-        const arrL = type === "machine" ? layout.machines : layout.tables;
+        const arrL = layout[layoutKey];
         if (arrL.length) arrL.pop();
         game.returnToInventory(type);
         game.recompute();
@@ -145,7 +150,7 @@ function beginPlaceMachine(type) {
     }
 
     _placingMachineType = type;
-    editor.select({ type, index, obj: item.group, data: item });
+    editor.select({ type: editorType, index, obj: item.group, data: item });
     editor.enterMoveMode();
     renderBuildInventory();
     toast(`Click to place your ${MACHINE_INV_NAMES[type].toLowerCase()}. Esc cancels.`, "good", 3500);
@@ -157,7 +162,8 @@ function cancelPlaceMachine() {
     const type = _placingMachineType;
     _placingMachineType = null;
     const layout = ensureFloorLayout();
-    const arr = type === "machine" ? layout.machines : layout.tables;
+    const layoutKey = type === "machine" ? "machines" : type === "blackjack" ? "blackjack" : type === "roulette" ? "roulette" : "tables";
+    const arr = layout[layoutKey];
     if (arr.length) arr.pop();
     game.returnToInventory(type);
     game.recompute();
@@ -800,10 +806,11 @@ editor.onSelect = (info, screenPos) => {
         .join("");
 
     const dealBtn = $("editor-deal");
-    if (info.type === "Dealer Table") {
+    if (info.type === "Dealer Table" || info.type === "Blackjack Table" || info.type === "Roulette Table") {
         dealBtn.classList.remove("hidden");
         dealBtn.disabled = !info.canInteract;
         dealBtn.title = info.canInteract ? "" : info.near ? "No players at the table" : "Walk closer to deal";
+        dealBtn.textContent = info.type === "Roulette Table" ? "Spin" : "Deal";
     } else {
         dealBtn.classList.add("hidden");
     }
@@ -866,11 +873,13 @@ editor.onMoveUpdate = (sx, sy, valid, reason) => {
 
 $("editor-move").onclick = () => { $("editor-info").classList.add("hidden"); editor.enterMoveMode(); };
 $("editor-deal").onclick = () => {
-    if (!editor.selected || editor.selected.type !== "table") return;
+    if (!editor.selected) return;
+    const t = editor.selected.type;
+    if (t !== "table" && t !== "blackjack" && t !== "roulette") return;
     editor.deselect();
-    // During tutorial deal_roulette step, force roulette instead of blackjack
     if (tutorial.isActive() && tutorial.stepId === "deal_roulette") startActivity("roulette");
-    else startActivity("dealer");
+    else if (t === "roulette") startActivity("roulette");
+    else startActivity("memory");
 };
 
 // Arrange Floor button in sidebar — toggles arrange mode
@@ -910,7 +919,8 @@ editor.cancelMove = function () {
     if (wasPlacing) game.unequipItem(wasPlacing);
     if (wasMachine) {
         const layout = ensureFloorLayout();
-        const arr = wasMachine === "machine" ? layout.machines : layout.tables;
+        const lk = wasMachine === "machine" ? "machines" : wasMachine === "blackjack" ? "blackjack" : wasMachine === "roulette" ? "roulette" : "tables";
+        const arr = layout[lk];
         if (arr.length) arr.pop();
         game.returnToInventory(wasMachine);
         game.recompute();
@@ -1061,12 +1071,14 @@ function launchAdGame(ped) {
 }
 
 function startActivity(key) {
+  try {
     if (activeGame || modalOpen) return;
     if (key === "office") {
         toggleLedger("casino");
         return;
     }
-    if (key === "dealer" && !customers.tablePlayers().length) {
+    const DEV_SKIP_PLAYERS = true;
+    if (!DEV_SKIP_PLAYERS && (key === "dealer" || key === "memory" || key === "roulette") && !customers.tablePlayers().length) {
         showMessage("Nobody at the table. Advertise, wait for a whale, or let a drunk wander over.", { from: "casino" });
         quip("An empty table. My least favourite kind.");
         return;
@@ -1080,22 +1092,39 @@ function startActivity(key) {
         if (!res.aborted) fn(res);
     };
     if (key === "dealer") {
-        activeGame = new CashRunGame(game, customers.tablePlayers());
+        activeGame = new ClickSkillGame(game, customers.tablePlayers());
         activeGame.onDone = finish((res) => {
             game.save();
             const net = res.won - res.lost;
-            const hadBJ = res.hands.some((h) => h.blackjack);
-            if (hadBJ) sfx.play("triumph");
+            const hadPerfect = res.hands.some((h) => h.perfect);
+            if (hadPerfect) sfx.play("triumph");
             else if (net > 0) sfx.playRandom("chuckle", "happy", "ching");
             else if (net < 0) sfx.playRandom("oof", "groan", "frustrate");
             else sfx.play("huff");
             showResult(
-                "Blackjack",
-                `<div class="row"><span>Hands dealt</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
+                "Click Skill",
+                `<div class="row"><span>Rounds</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
                 net >= 0 ? "HOUSE" : "OUCH",
             );
         });
-        activeGame.open("Beat the dealer — get closer to 21 without busting. H to hit, S to stand.");
+        activeGame.open("Click the targets before they vanish. Hit enough to win the bet.");
+    } else if (key === "memory") {
+        activeGame = new MemoryGame(game, customers.tablePlayers());
+        activeGame.onDone = finish((res) => {
+            game.save();
+            const net = res.won - res.lost;
+            const hadPerfect = res.hands.some((h) => h.perfect);
+            if (hadPerfect) sfx.play("triumph");
+            else if (net > 0) sfx.playRandom("chuckle", "happy", "ching");
+            else if (net < 0) sfx.playRandom("oof", "groan", "frustrate");
+            else sfx.play("huff");
+            showResult(
+                "Number Memory",
+                `<div class="row"><span>Rounds</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
+                net >= 0 ? "HOUSE" : "OUCH",
+            );
+        });
+        activeGame.open("Memorize the number sequence, then enter it back. Click or type.");
     } else if (key === "roulette") {
         activeGame = new DealerGame(game, customers.tablePlayers());
         activeGame.onDone = finish((res) => {
@@ -1134,6 +1163,12 @@ function startActivity(key) {
         });
         activeGame.open("Stop the wheel near the target number. SPACE or click.");
     }
+  } catch (err) {
+    console.error("startActivity error:", err);
+    showMessage(`Game error: ${err.message}`, { from: "system" });
+    activeGame = null;
+    player.enabled = true;
+  }
 }
 
 // ---- keys ---------------------------------------------------------------------
