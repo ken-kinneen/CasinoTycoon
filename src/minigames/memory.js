@@ -1,6 +1,6 @@
-// Number Memory: a sequence of numbers flashes on screen, then the player must
-// recall them in order. Each round a gambler sits; remember enough to win their
-// bet. Sequence length scales with difficulty.
+// Number Memory: memorize increasingly long number sequences, then enter them
+// back. Each round a gambler sits; crack enough sequences to win their bet.
+// Sequence length grows each sub-round, scaling with difficulty.
 import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
 import { TYPE_INFO, DIFFICULTY_TIERS } from '../world/customers.js';
 import * as sfx from '../audio/sfx.js';
@@ -11,10 +11,22 @@ const QUIPS = {
   perfect: ['"Photographic. You terrify me."', '"Perfect recall. The dealers are nervous."', '"Not a single miss. Legendary."'],
 };
 
-const SEQ_LENGTH = { easy: 4, medium: 6, hard: 8 };
-const SHOW_TIME = { easy: 3.0, medium: 2.5, hard: 2.0 };
-const INPUT_TIME = { easy: 10, medium: 8, hard: 6 };
-const NUM_ROUNDS = 3;
+const ROUNDS = { easy: 3, medium: 4, hard: 5 };
+const START_LEN = { easy: 2, medium: 3, hard: 3 };
+const SHOW_BASE = 2.4;
+const SHOW_PER_DIGIT = 0.5;
+const INPUT_TIME = { easy: 12, medium: 9, hard: 7 };
+const DIGIT_SIZE = 68;
+const PAD_COLS = 5;
+const PAD_BTN = 64;
+const PAD_GAP = 10;
+const PAD_Y = GH - 160;
+
+function genSequence(len) {
+  const seq = [];
+  for (let i = 0; i < len; i++) seq.push(Math.floor(Math.random() * 10));
+  return seq;
+}
 
 export class MemoryGame extends MiniGame {
   constructor(game, players) {
@@ -29,16 +41,13 @@ export class MemoryGame extends MiniGame {
     this.phaseT = 1.6;
     this.chips = [];
     this.shakeT = 0;
-    this.subRound = 0;
-    this.totalCorrect = 0;
-    this.totalAttempted = 0;
     this.setupHand();
   }
 
-  burst(x, y, color, n = 20) {
+  burst(x, y, color, n = 18) {
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 90 + Math.random() * 260;
-      this.chips.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 10, life: 0.7 + Math.random() * 0.5, max: 1.2, color });
+      const a = Math.random() * Math.PI * 2, s = 80 + Math.random() * 260;
+      this.chips.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 10, life: 0.5 + Math.random() * 0.4, max: 0.9, color });
     }
   }
 
@@ -53,40 +62,39 @@ export class MemoryGame extends MiniGame {
       type: c.type, difficulty: diff, label: info.label, tierLabel: tier.label, tierColor: tier.color,
       bet: Math.round(info.bet * st.dealerBet * betScale * tier.betMul),
     };
+    this.numRounds = ROUNDS[diff];
     this.subRound = 0;
-    this.totalCorrect = 0;
-    this.totalAttempted = 0;
+    this.roundsCleared = 0;
     this.setupSubRound();
   }
 
   setupSubRound() {
     const diff = this.current.difficulty;
-    const baseLen = SEQ_LENGTH[diff];
-    const len = baseLen + this.subRound;
-    this.sequence = [];
-    for (let i = 0; i < len; i++) {
-      this.sequence.push(Math.floor(Math.random() * 10));
-    }
-    this.showTimer = SHOW_TIME[diff];
-    this.inputTimer = INPUT_TIME[diff];
-    this.inputTimeTotal = INPUT_TIME[diff];
-    this.inputSeq = [];
-    this.inputIdx = 0;
+    const len = START_LEN[diff] + this.subRound;
+    this.sequence = genSequence(len);
+    this.input = [];
     this.subPhase = 'show';
+    this.showTimer = SHOW_BASE + len * SHOW_PER_DIGIT;
+    this.inputTimer = INPUT_TIME[diff] + this.subRound;
+    this.inputTimeTotal = this.inputTimer;
+    this.digitReveal = this.sequence.map(() => 0);
+    this.subPhaseT = 0;
     this.feedback = null;
     this.feedbackT = 0;
-    this.correctThisRound = 0;
   }
+
+  get padW() { return PAD_COLS * (PAD_BTN + PAD_GAP) - PAD_GAP; }
+  get padX() { return GW / 2 - this.padW / 2; }
 
   onDown() {
     if (this.phase !== 'play' || this.subPhase !== 'input') return;
     const mx = this.mouse.x, my = this.mouse.y;
-
-    // check numpad button hits
-    for (let n = 0; n <= 9; n++) {
-      const bx = this.numpadX(n), by = this.numpadY(n);
-      if (mx >= bx && mx <= bx + 68 && my >= by && my <= by + 68) {
-        this.inputNumber(n);
+    for (let i = 0; i < 10; i++) {
+      const col = i % PAD_COLS, row = Math.floor(i / PAD_COLS);
+      const bx = this.padX + col * (PAD_BTN + PAD_GAP);
+      const by = PAD_Y + row * (PAD_BTN + PAD_GAP);
+      if (mx >= bx && mx <= bx + PAD_BTN && my >= by && my <= by + PAD_BTN) {
+        this.submitDigit(i);
         return;
       }
     }
@@ -97,70 +105,51 @@ export class MemoryGame extends MiniGame {
     const n = parseInt(e.key);
     if (!isNaN(n) && n >= 0 && n <= 9) {
       e.preventDefault();
-      this.inputNumber(n);
+      this.submitDigit(n);
     }
   }
 
-  numpadX(n) {
-    if (n === 0) return GW / 2 - 34;
-    const col = (n - 1) % 3;
-    return GW / 2 - 118 + col * 84;
-  }
+  submitDigit(d) {
+    const idx = this.input.length;
+    this.input.push(d);
+    sfx.play('keypad', d);
 
-  numpadY(n) {
-    if (n === 0) return 440;
-    const row = Math.floor((n - 1) / 3);
-    return 200 + row * 80;
-  }
-
-  inputNumber(n) {
-    sfx.play('keypad', n);
-    const expected = this.sequence[this.inputIdx];
-    this.inputSeq.push(n);
-
-    if (n === expected) {
-      this.correctThisRound++;
-      this.inputIdx++;
-      this.feedback = { correct: true, num: n };
-      this.feedbackT = 0.3;
-
-      if (this.inputIdx >= this.sequence.length) {
-        this.totalCorrect += this.correctThisRound;
-        this.totalAttempted += this.sequence.length;
-        this.advanceSubRound(true);
-      }
-    } else {
-      this.totalCorrect += this.correctThisRound;
-      this.totalAttempted += this.sequence.length;
-      this.feedback = { correct: false, num: n, expected };
+    if (d !== this.sequence[idx]) {
+      this.feedback = { correct: false, num: d, expected: this.sequence[idx] };
       this.feedbackT = 0.8;
+      this.shakeT = 0.35;
+      this.burst(GW / 2, 260, PAL.red, 16);
       this.advanceSubRound(false);
+      return;
+    }
+
+    this.feedback = { correct: true, num: d };
+    this.feedbackT = 0.25;
+    const slotW = DIGIT_SIZE + 14;
+    const startX = GW / 2 - (this.sequence.length * slotW - 14) / 2;
+    this.burst(startX + idx * slotW + DIGIT_SIZE / 2, 260, PAL.green, 8);
+
+    if (this.input.length === this.sequence.length) {
+      this.roundsCleared++;
+      this.burst(GW / 2, 260, PAL.gold, 20);
+      this.advanceSubRound(true);
     }
   }
 
   advanceSubRound(success) {
-    if (success) {
-      this.burst(GW / 2, 300, PAL.gold, 12);
-    } else {
-      this.burst(GW / 2, 300, PAL.red, 8);
-      this.shakeT = 0.3;
-    }
     this.subRound++;
-    if (this.subRound >= NUM_ROUNDS) {
-      setTimeout(() => this.resolveHand(), success ? 600 : 1000);
+    if (!success || this.subRound >= this.numRounds) {
+      setTimeout(() => this.resolveHand(success && this.subRound >= this.numRounds), success ? 600 : 900);
     } else {
-      setTimeout(() => {
-        this.setupSubRound();
-      }, success ? 600 : 1000);
+      setTimeout(() => this.setupSubRound(), 700);
     }
   }
 
-  resolveHand() {
-    const ratio = this.totalAttempted > 0 ? this.totalCorrect / this.totalAttempted : 0;
-    const hit = ratio >= 0.5;
-    const perfect = ratio === 1;
+  resolveHand(allCleared) {
     const st = this.game.stats;
     const bet = this.current.bet;
+    const hit = this.roundsCleared >= Math.ceil(this.numRounds / 2);
+    const perfect = allCleared;
 
     const mul = perfect ? 2 : 1;
     const amount = hit ? Math.round(bet * st.houseEdge * mul) : bet;
@@ -168,7 +157,11 @@ export class MemoryGame extends MiniGame {
     else { const pay = Math.min(amount, this.game.s.money); this.game.spend(pay); this.lost += pay; }
 
     const pool = perfect ? QUIPS.perfect : QUIPS[hit ? 'win' : 'lose'];
-    this.results.push({ hit, perfect, amount, quip: pool[Math.floor(Math.random() * pool.length)], correct: this.totalCorrect, total: this.totalAttempted });
+    this.results.push({
+      hit, perfect, amount,
+      quip: pool[Math.floor(Math.random() * pool.length)],
+      cleared: this.roundsCleared, total: this.numRounds,
+    });
 
     if (perfect) {
       sfx.play('bullseye');
@@ -176,12 +169,12 @@ export class MemoryGame extends MiniGame {
       this.shakeT = 0.6;
     } else if (hit) {
       sfx.playRandom('happy', 'chuckle', 'ching');
-      this.burst(GW / 2, 300, PAL.gold, 28);
-      this.shakeT = 0.35;
+      this.burst(GW / 2, 300, PAL.gold, 24);
+      this.shakeT = 0.3;
     } else {
       sfx.playRandom('groan', 'oof', 'frustrate');
       this.burst(GW / 2, 300, PAL.red, 14);
-      this.shakeT = 0.5;
+      this.shakeT = 0.45;
     }
     this.phase = 'result';
     this.phaseT = perfect ? 2.6 : 2.0;
@@ -200,22 +193,31 @@ export class MemoryGame extends MiniGame {
       if (this.phaseT <= 0) this.phase = 'play';
       return;
     }
-    if (this.phase === 'play' && this.subPhase === 'show') {
-      this.showTimer -= dt;
-      if (this.showTimer <= 0) {
-        this.subPhase = 'input';
+    if (this.phase === 'play') {
+      this.subPhaseT += dt;
+      if (this.subPhase === 'show') {
+        const dur = SHOW_BASE + this.sequence.length * SHOW_PER_DIGIT;
+        for (let i = 0; i < this.digitReveal.length; i++) {
+          const start = 0.3 + i * SHOW_PER_DIGIT * 0.7;
+          this.digitReveal[i] = Math.min(1, Math.max(0, (this.subPhaseT - start) / 0.3));
+        }
+        if (this.subPhaseT >= dur) {
+          this.subPhase = 'input';
+          this.subPhaseT = 0;
+          this.input = [];
+        }
+      } else if (this.subPhase === 'input') {
+        this.inputTimer -= dt;
+        if (this.inputTimer <= 0) {
+          this.inputTimer = 0;
+          this.feedback = { correct: false, num: -1, expected: this.sequence[this.input.length] };
+          this.feedbackT = 0.8;
+          this.shakeT = 0.35;
+          this.burst(GW / 2, 260, PAL.red, 16);
+          this.advanceSubRound(false);
+        }
       }
-    }
-    if (this.phase === 'play' && this.subPhase === 'input') {
-      this.inputTimer -= dt;
-      if (this.inputTimer <= 0) {
-        this.inputTimer = 0;
-        this.totalCorrect += this.correctThisRound;
-        this.totalAttempted += this.sequence.length;
-        this.feedback = { correct: false, num: -1, expected: this.sequence[this.inputIdx] };
-        this.feedbackT = 0.8;
-        this.advanceSubRound(false);
-      }
+      return;
     }
     if (this.phase === 'result') {
       this.phaseT -= dt;
@@ -226,6 +228,8 @@ export class MemoryGame extends MiniGame {
       }
     }
   }
+
+  // ---- drawing (roulette-style casino table) ----
 
   drawTable(ctx) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -260,69 +264,66 @@ export class MemoryGame extends MiniGame {
 
   drawSequence(ctx) {
     const seq = this.sequence;
-    const totalW = seq.length * 60 + (seq.length - 1) * 12;
-    const sx = GW / 2 - totalW / 2;
-    const sy = 160;
+    const totalSlots = seq.length;
+    const slotW = DIGIT_SIZE + 14;
+    const startX = GW / 2 - (totalSlots * slotW - 14) / 2;
+    const cy = 260;
 
-    for (let i = 0; i < seq.length; i++) {
-      const x = sx + i * 72;
-      const revealed = this.subPhase === 'show' || i < this.inputIdx;
-      const current = this.subPhase === 'input' && i === this.inputIdx;
-      const wrong = this.feedback && !this.feedback.correct && i === this.inputIdx && this.feedbackT > 0;
-
+    for (let i = 0; i < totalSlots; i++) {
+      const sx = startX + i * slotW;
       ctx.save();
-      if (current) {
-        const pulse = 0.8 + Math.sin(this.t * 6) * 0.2;
-        ctx.shadowColor = PAL.gold;
-        ctx.shadowBlur = 12 * pulse;
-      }
 
-      // card background
-      if (wrong) {
-        ctx.fillStyle = this.rgba(PAL.red, 0.3);
-      } else if (revealed) {
-        ctx.fillStyle = 'rgba(20,16,36,0.9)';
+      if (this.subPhase === 'show') {
+        const reveal = this.digitReveal[i] || 0;
+        ctx.fillStyle = this.rgba(PAL.gold, 0.06 + reveal * 0.1);
+        this.roundRect(ctx, sx, cy - DIGIT_SIZE / 2, DIGIT_SIZE, DIGIT_SIZE, 8); ctx.fill();
+        ctx.strokeStyle = this.rgba(PAL.gold, 0.2 + reveal * 0.4); ctx.lineWidth = 1.5; ctx.stroke();
+        if (reveal > 0.1) {
+          ctx.globalAlpha = reveal;
+          this.neon(ctx, `${seq[i]}`, sx + DIGIT_SIZE / 2, cy, DIGIT_SIZE * 0.65, PAL.gold, 'center', 6, 2);
+        }
       } else {
-        ctx.fillStyle = current ? 'rgba(30,24,50,0.9)' : 'rgba(14,10,24,0.7)';
+        const filled = i < this.input.length;
+        const correct = filled && this.input[i] === seq[i];
+        const wrong = filled && !correct;
+        const current = i === this.input.length && this.subPhase === 'input';
+
+        const bgAlpha = current ? 0.14 + Math.sin(this.t * 4) * 0.04 : filled ? 0.12 : 0.04;
+        const borderColor = wrong ? PAL.red : correct ? PAL.green : current ? PAL.cyan : PAL.dim;
+
+        ctx.fillStyle = this.rgba(wrong ? PAL.red : correct ? PAL.green : PAL.gold, bgAlpha);
+        this.roundRect(ctx, sx, cy - DIGIT_SIZE / 2, DIGIT_SIZE, DIGIT_SIZE, 8); ctx.fill();
+        ctx.strokeStyle = this.rgba(borderColor, current ? 0.7 : 0.35); ctx.lineWidth = 1.5; ctx.stroke();
+
+        if (filled) {
+          const color = wrong ? PAL.red : PAL.green;
+          this.neon(ctx, `${this.input[i]}`, sx + DIGIT_SIZE / 2, cy, DIGIT_SIZE * 0.65, color, 'center', 4, 2);
+        } else if (current) {
+          ctx.globalAlpha = 0.4 + Math.sin(this.t * 5) * 0.2;
+          this.text(ctx, '?', sx + DIGIT_SIZE / 2, cy, 30, PAL.cyan, 'center');
+        } else {
+          this.text(ctx, '\u00b7', sx + DIGIT_SIZE / 2, cy, 28, this.rgba(PAL.dim, 0.3), 'center');
+        }
       }
-      this.roundRect(ctx, x, sy, 56, 72, 8);
-      ctx.fill();
-
-      // card border
-      ctx.strokeStyle = wrong ? PAL.red : revealed ? this.rgba(PAL.cyan, 0.6) : current ? this.rgba(PAL.gold, 0.6) : 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = current ? 2.5 : 1.5;
-      ctx.stroke();
-
-      // number
-      if (revealed) {
-        const col = wrong ? PAL.red : PAL.cyan;
-        this.neon(ctx, `${seq[i]}`, x + 28, sy + 36, 36, col, 'center', 14, 1);
-      } else if (current) {
-        this.neon(ctx, '?', x + 28, sy + 36, 36, PAL.gold, 'center', 10, 1);
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.beginPath(); ctx.arc(x + 28, sy + 36, 4, 0, Math.PI * 2); ctx.fill();
-      }
-
       ctx.restore();
     }
   }
 
-  drawNumpad(ctx) {
+  drawPad(ctx) {
+    if (this.subPhase !== 'input') return;
     const mx = this.mouse.x, my = this.mouse.y;
-
-    for (let n = 0; n <= 9; n++) {
-      const bx = this.numpadX(n), by = this.numpadY(n);
-      const hover = mx >= bx && mx <= bx + 68 && my >= by && my <= by + 68;
+    for (let i = 0; i < 10; i++) {
+      const col = i % PAD_COLS, row = Math.floor(i / PAD_COLS);
+      const bx = this.padX + col * (PAD_BTN + PAD_GAP);
+      const by = PAD_Y + row * (PAD_BTN + PAD_GAP);
+      const hover = mx >= bx && mx <= bx + PAD_BTN && my >= by && my <= by + PAD_BTN;
 
       ctx.save();
-      ctx.fillStyle = hover ? this.rgba(PAL.gold, 0.25) : 'rgba(20,16,36,0.7)';
-      this.roundRect(ctx, bx, by, 68, 68, 10);
-      ctx.fill();
-      ctx.strokeStyle = hover ? PAL.gold : this.rgba(PAL.bone, 0.2);
-      ctx.lineWidth = hover ? 2 : 1;
-      ctx.stroke();
-      this.neon(ctx, `${n}`, bx + 34, by + 34, 32, hover ? PAL.gold : PAL.bone, 'center', hover ? 14 : 6, 1);
+      ctx.fillStyle = hover ? this.rgba(PAL.gold, 0.15) : 'rgba(14,10,22,0.65)';
+      this.roundRect(ctx, bx, by, PAD_BTN, PAD_BTN, 8); ctx.fill();
+      ctx.strokeStyle = hover ? this.rgba(PAL.gold, 0.5) : this.rgba(PAL.gold, 0.15);
+      ctx.lineWidth = hover ? 2 : 1; ctx.stroke();
+      this.neon(ctx, `${i}`, bx + PAD_BTN / 2, by + PAD_BTN / 2, 28, hover ? PAL.gold : PAL.bone, 'center', hover ? 4 : 0, 1);
       ctx.restore();
     }
   }
@@ -330,7 +331,7 @@ export class MemoryGame extends MiniGame {
   draw(ctx) {
     const t = this.t, cur = this.current;
     ctx.save();
-    if (this.shakeT > 0) ctx.translate((Math.random() - 0.5) * this.shakeT * 16, (Math.random() - 0.5) * this.shakeT * 16);
+    if (this.shakeT > 0) ctx.translate((Math.random() - 0.5) * this.shakeT * 14, (Math.random() - 0.5) * this.shakeT * 8);
 
     this.backdrop(ctx, PAL.green, t);
     this.drawTable(ctx);
@@ -350,47 +351,51 @@ export class MemoryGame extends MiniGame {
     this.text(ctx, fmtMoney(cur.bet), 46, 194, 22, PAL.green, 'left');
 
     if (this.phase === 'play') {
-      // sub-round indicator
-      this.panel(ctx, GW - 180, 88, 154, 56, { accent: PAL.gold });
-      this.label(ctx, 'sequence', GW - 160, 106, 10, PAL.dim);
-      this.neon(ctx, `${this.subRound + 1} / ${NUM_ROUNDS}`, GW - 160, 130, 24, PAL.gold, 'left', 10, 1);
+      // sequence progress
+      this.panel(ctx, GW - 200, 88, 174, 56, { accent: PAL.gold });
+      this.label(ctx, 'sequence', GW - 180, 106, 10, PAL.dim);
+      this.neon(ctx, `${this.subRound + 1} / ${this.numRounds}`, GW - 180, 130, 24, PAL.gold, 'left', 10, 1);
+
+      // round progress dots
+      const dotY = 152;
+      for (let i = 0; i < this.numRounds; i++) {
+        const dx = GW - 180 + i * 22;
+        const cleared = i < this.roundsCleared;
+        ctx.save();
+        ctx.fillStyle = cleared ? PAL.green : this.rgba(PAL.dim, 0.3);
+        ctx.beginPath(); ctx.arc(dx, dotY, 6, 0, Math.PI * 2); ctx.fill();
+        if (cleared) this.text(ctx, '\u2713', dx, dotY, 9, '#000', 'center', undefined, '800');
+        ctx.restore();
+      }
 
       if (this.subPhase === 'show') {
-        // show the sequence
         this.drawSequence(ctx);
-
-        // countdown bar
-        const total = SHOW_TIME[cur.difficulty];
-        const frac = this.showTimer / total;
-        this.timerBar(ctx, frac, PAL.cyan, 142);
+        const total = SHOW_BASE + this.sequence.length * SHOW_PER_DIGIT;
+        const frac = Math.max(0, this.subPhaseT / total);
+        this.timerBar(ctx, 1 - frac, PAL.cyan, 186);
 
         ctx.save(); ctx.globalAlpha = 0.65 + Math.sin(t * 4) * 0.35;
-        this.label(ctx, 'memorize the numbers', GW / 2, 260, 14, PAL.bone, 'center');
+        this.label(ctx, 'memorize the numbers', GW / 2, 320, 14, PAL.bone, 'center');
         ctx.restore();
       } else if (this.subPhase === 'input') {
         this.drawSequence(ctx);
-        this.drawNumpad(ctx);
+        this.drawPad(ctx);
 
         const frac = this.inputTimer / this.inputTimeTotal;
-        this.timerBar(ctx, frac, PAL.gold, 142);
+        this.timerBar(ctx, frac, PAL.gold, 186);
 
         ctx.save(); ctx.globalAlpha = 0.5;
-        this.label(ctx, 'click or type the numbers in order', GW / 2, 530, 11, PAL.bone, 'center');
+        this.label(ctx, 'enter the code \u2014 click or type', GW / 2, 320, 12, PAL.bone, 'center');
         ctx.restore();
       }
 
       // feedback flash
       if (this.feedback && this.feedbackT > 0) {
         const a = Math.min(1, this.feedbackT * 3);
-        if (this.feedback.correct) {
-          ctx.save(); ctx.globalAlpha = a * 0.15;
-          ctx.fillStyle = PAL.green; ctx.fillRect(0, 0, GW, GH);
-          ctx.restore();
-        } else {
-          ctx.save(); ctx.globalAlpha = a * 0.2;
-          ctx.fillStyle = PAL.red; ctx.fillRect(0, 0, GW, GH);
-          ctx.restore();
-        }
+        ctx.save(); ctx.globalAlpha = a * 0.15;
+        ctx.fillStyle = this.feedback.correct ? PAL.green : PAL.red;
+        ctx.fillRect(0, 0, GW, GH);
+        ctx.restore();
       }
     }
 
@@ -399,20 +404,20 @@ export class MemoryGame extends MiniGame {
       ctx.save(); ctx.globalAlpha = a;
       this.neon(ctx, `A ${cur.label.toLowerCase()} sits down`, GW / 2, 240, 44, PAL.bone, 'center', 20, 3);
       this.neon(ctx, cur.tierLabel.toUpperCase(), GW / 2, 282, 26, cur.tierColor, 'center', 14, 2);
-      this.text(ctx, `They're betting ${fmtMoney(cur.bet)} — remember the numbers to win.`, GW / 2, 320, 18, PAL.gold, 'center', undefined, '500');
+      this.text(ctx, `They're betting ${fmtMoney(cur.bet)} \u2014 remember the numbers to win.`, GW / 2, 320, 18, PAL.gold, 'center', undefined, '500');
       ctx.restore();
     }
 
     if (this.phase === 'result') {
       const r = this.results[this.results.length - 1];
       if (r.perfect) {
-        this.banner(ctx, `PERFECT MEMORY!  2x  +${fmtMoney(r.amount)}`, 62, PAL.gold, 42);
+        this.banner(ctx, `PERFECT MEMORY!  2x  +${fmtMoney(r.amount)}`, 62, PAL.gold, 36);
       } else {
-        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  −${fmtMoney(r.amount)}`, 62, r.hit ? PAL.gold : PAL.red, 38);
+        this.banner(ctx, r.hit ? `HOUSE WINS  +${fmtMoney(r.amount)}` : `GAMBLER WINS  \u2212${fmtMoney(r.amount)}`, 62, r.hit ? PAL.gold : PAL.red, 32);
       }
-      this.label(ctx, `${r.correct} / ${r.total} correct`, GW / 2, 102, 14, PAL.bone, 'center');
-      ctx.save(); ctx.font = `italic 19px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(r.quip, GW / 2, 542); ctx.restore();
+      this.label(ctx, `${r.cleared} / ${r.total} sequences cracked`, GW / 2, 102, 13, PAL.bone, 'center');
+      ctx.save(); ctx.font = `italic 17px ${SERIF}`; ctx.fillStyle = PAL.bone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(r.quip, GW / 2, 540); ctx.restore();
     }
 
     // flying chips
@@ -420,9 +425,9 @@ export class MemoryGame extends MiniGame {
     for (const p of this.chips) {
       ctx.globalAlpha = Math.max(0, Math.min(1, p.life / p.max));
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
-      ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 10;
-      ctx.beginPath(); ctx.ellipse(0, 0, 9, 9 * Math.abs(Math.cos(p.r)) + 2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fillRect(-9, -1.5, 18, 3);
+      ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.ellipse(0, 0, 8, 8 * Math.abs(Math.cos(p.r)) + 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(-8, -1, 16, 2);
       ctx.restore();
     }
     ctx.restore();

@@ -1,4 +1,4 @@
-// Roulette: a target number is drawn, a 10-second countdown starts and a ball
+// Roulette: a target number is drawn, a 5-second countdown starts and a ball
 // cursor sweeps around a circular wheel. Hit SPACE / click to stop it. Land on
 // or near the target and the house takes the bet. Bullseye (exact) pays 2x.
 import { MiniGame, GW, GH, fmtMoney, PAL, SERIF } from './base.js';
@@ -12,6 +12,10 @@ const QUIPS = {
 };
 
 const BULLSEYE_RADIUS = 0;
+const BALL_SPEED_BY_TYPE = { drunk: 0.9, regular: 1.0, sharp: 1.2, whale: 1.4 };
+const BALL_SPEED_BY_DIFF = { easy: 1.0, medium: 1.4, hard: 1.8 };
+const FIXED_MARGIN = 2;
+const COUNTDOWN_SEC = 5;
 const WHEEL_NUMBERS = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
 const RED_NUMBERS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 const TWO_PI = Math.PI * 2;
@@ -53,12 +57,14 @@ export class DealerGame extends MiniGame {
     const betScale = Math.sqrt(st.spendPerMin / 40);
     this.current = {
       type: c.type, difficulty: diff, label: info.label, tierLabel: tier.label, tierColor: tier.color,
-      margin: Math.max(1, Math.round((info.margin + st.dealerMargin) * tier.dealerMarginMul)),
+      margin: Math.max(1, FIXED_MARGIN + Math.round(st.dealerMargin)),
       bet: Math.round(info.bet * st.dealerBet * betScale * tier.betMul),
       target: WHEEL_NUMBERS[Math.floor(Math.random() * WHEEL_NUMBERS.length)],
     };
-    this.countdown = 10;
-    this.angularSpeed = 8.5 * st.dealerSpeed;
+    this.countdown = COUNTDOWN_SEC;
+    const typeMul = BALL_SPEED_BY_TYPE[c.type] || 1;
+    const diffMul = BALL_SPEED_BY_DIFF[diff] || 1;
+    this.angularSpeed = 8.5 * st.dealerSpeed * typeMul * diffMul;
     this.angle = Math.random() * TWO_PI;
     this.locked = null;
     this.lockedAngle = null;
@@ -296,7 +302,7 @@ export class DealerGame extends MiniGame {
       ctx.beginPath(); ctx.arc(wcx, wcy, timerR, 0, TWO_PI); ctx.stroke();
       ctx.strokeStyle = cdc; ctx.lineWidth = 4; ctx.lineCap = 'round';
       ctx.shadowColor = cdc; ctx.shadowBlur = this.countdown < 3 ? 16 : 6;
-      ctx.beginPath(); ctx.arc(wcx, wcy, timerR, -Math.PI / 2, -Math.PI / 2 + TWO_PI * Math.max(0, this.countdown / 10)); ctx.stroke();
+      ctx.beginPath(); ctx.arc(wcx, wcy, timerR, -Math.PI / 2, -Math.PI / 2 + TWO_PI * Math.max(0, this.countdown / COUNTDOWN_SEC)); ctx.stroke();
       ctx.restore();
       const puls = this.countdown < 3 ? 1 + Math.sin(t * 12) * 0.06 : 1;
       this.neon(ctx, `${Math.max(0, Math.ceil(this.countdown))}`, wcx, wcy, 28 * puls, cdc, 'center', 8, 1);
