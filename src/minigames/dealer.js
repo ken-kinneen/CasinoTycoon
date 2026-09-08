@@ -58,7 +58,7 @@ export class DealerGame extends MiniGame {
       target: WHEEL_NUMBERS[Math.floor(Math.random() * WHEEL_NUMBERS.length)],
     };
     this.countdown = 10;
-    this.angularSpeed = 4.25 * st.dealerSpeed;
+    this.angularSpeed = 8.5 * st.dealerSpeed;
     this.angle = Math.random() * TWO_PI;
     this.locked = null;
     this.lockedAngle = null;

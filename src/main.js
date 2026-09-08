@@ -10,9 +10,7 @@ import { HUD, toast, quip } from "./ui/hud.js";
 import { Ledger } from "./ui/ledger.js";
 import { AchievementsScreen } from "./ui/achievements.js";
 import { AdvertisingGame } from "./minigames/advertising.js";
-import { ClickSkillGame } from "./minigames/clickskill.js";
 import { MemoryGame } from "./minigames/memory.js";
-import { CashRunGame } from "./minigames/cashrun.js";
 import { DealerGame } from "./minigames/dealer.js";
 import { fmtMoney } from "./minigames/base.js";
 import { PedestrianManager } from "./world/pedestrians.js";
@@ -811,7 +809,7 @@ editor.onSelect = (info, screenPos) => {
         dealBtn.classList.remove("hidden");
         dealBtn.disabled = !info.canInteract;
         dealBtn.title = info.canInteract ? "" : "Walk closer to deal";
-        dealBtn.textContent = info.type === "Roulette Table" ? "Spin" : info.type === "Blackjack Table" ? "Crack" : "Deal";
+        dealBtn.textContent = info.type === "Roulette Table" ? "Spin" : "Deal";
     } else {
         dealBtn.classList.add("hidden");
     }
@@ -919,7 +917,7 @@ $("editor-deal").onclick = () => {
     if (t !== "table" && t !== "blackjack" && t !== "roulette") return;
     const gameKey = (tutorial.isActive() && tutorial.stepId === "deal_roulette")
         ? "roulette"
-        : t === "roulette" ? "roulette" : t === "blackjack" ? "vault" : "memory";
+        : t === "roulette" ? "roulette" : "memory";
     editor.deselect();
     const tablePlayers = customers.tablePlayers();
     if (tablePlayers.length) {
@@ -1043,11 +1041,6 @@ function jumpTo(key) {
         if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
         return;
     }
-    if (key === "vault") {
-        if (world.blackjackTables && world.blackjackTables.length) player.teleport(world.blackjackTables[0].pos.x, world.blackjackTables[0].pos.z + 3);
-        else if (world.tables.length) player.teleport(world.tables[0].pos.x, world.tables[0].pos.z + 3);
-        return;
-    }
     const z = world.zones.office;
     if (z) player.teleport(z.pos.x, z.pos.z);
 }
@@ -1130,7 +1123,7 @@ function startActivity(key, players) {
         return;
     }
     const tablePlayers = players || customers.tablePlayers();
-    if ((key === "dealer" || key === "memory" || key === "roulette" || key === "vault") && !tablePlayers.length) {
+    if ((key === "dealer" || key === "memory" || key === "roulette") && !tablePlayers.length) {
         showAvatarPicker(key);
         return;
     }
@@ -1142,24 +1135,7 @@ function startActivity(key, players) {
         player.keys = {};
         if (!res.aborted) fn(res);
     };
-    if (key === "dealer") {
-        activeGame = new ClickSkillGame(game, tablePlayers);
-        activeGame.onDone = finish((res) => {
-            game.save();
-            const net = res.won - res.lost;
-            const hadPerfect = res.hands.some((h) => h.perfect);
-            if (hadPerfect) sfx.play("triumph");
-            else if (net > 0) sfx.playRandom("chuckle", "happy", "ching");
-            else if (net < 0) sfx.playRandom("oof", "groan", "frustrate");
-            else sfx.play("huff");
-            showResult(
-                "Click Skill",
-                `<div class="row"><span>Rounds</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
-                net >= 0 ? "HOUSE" : "OUCH",
-            );
-        });
-        activeGame.open("Click the targets before they vanish. Hit enough to win the bet.");
-    } else if (key === "memory") {
+    if (key === "dealer" || key === "memory") {
         activeGame = new MemoryGame(game, tablePlayers);
         activeGame.onDone = finish((res) => {
             game.save();
@@ -1213,23 +1189,6 @@ function startActivity(key, players) {
             }
         });
         activeGame.open("Stop the wheel near the target number. SPACE or click.");
-    } else if (key === "vault") {
-        activeGame = new CashRunGame(game, tablePlayers);
-        activeGame.onDone = finish((res) => {
-            game.save();
-            const net = res.won - res.lost;
-            const hadPerfect = res.hands.some((h) => h.perfect);
-            if (hadPerfect) sfx.play("triumph");
-            else if (net > 0) sfx.playRandom("chuckle", "happy", "ching");
-            else if (net < 0) sfx.playRandom("oof", "groan", "frustrate");
-            else sfx.play("huff");
-            showResult(
-                "Vault Crack",
-                `<div class="row"><span>Hands</span><b>${res.hands.length}</b></div><div class="row"><span>House wins</span><b>${res.hands.filter((h) => h.hit).length}</b></div><div class="row"><span>Net</span><span class="big ${net < 0 ? "neg" : ""}">${net >= 0 ? "+" : "-"}${fmtMoney(Math.abs(net))}</span></div><div class="quip">${res.hands[res.hands.length - 1].quip}</div>`,
-                net >= 0 ? "HOUSE" : "OUCH",
-            );
-        });
-        activeGame.open("Memorize the vault code, then enter it back. Click or type.");
     }
   } catch (err) {
     console.error("startActivity error:", err);
@@ -1306,7 +1265,6 @@ window.addEventListener("keydown", (e) => {
     } else if (!modalOpen && e.code === "Digit1") jumpTo("advertising");
     else if (!modalOpen && e.code === "Digit2") jumpTo("dealer");
     else if (!modalOpen && e.code === "Digit3") jumpTo("roulette");
-    else if (!modalOpen && e.code === "Digit4") jumpTo("vault");
     else if (!modalOpen && e.code === "KeyG") toggleArrangeMode();
 });
 

@@ -13,6 +13,7 @@ const QUIPS = {
 
 const SEQ_LENGTH = { easy: 4, medium: 6, hard: 8 };
 const SHOW_TIME = { easy: 3.0, medium: 2.5, hard: 2.0 };
+const INPUT_TIME = { easy: 10, medium: 8, hard: 6 };
 const NUM_ROUNDS = 3;
 
 export class MemoryGame extends MiniGame {
@@ -67,6 +68,8 @@ export class MemoryGame extends MiniGame {
       this.sequence.push(Math.floor(Math.random() * 10));
     }
     this.showTimer = SHOW_TIME[diff];
+    this.inputTimer = INPUT_TIME[diff];
+    this.inputTimeTotal = INPUT_TIME[diff];
     this.inputSeq = [];
     this.inputIdx = 0;
     this.subPhase = 'show';
@@ -106,7 +109,7 @@ export class MemoryGame extends MiniGame {
 
   numpadY(n) {
     if (n === 0) return 440;
-    const row = 2 - Math.floor((n - 1) / 3);
+    const row = Math.floor((n - 1) / 3);
     return 200 + row * 80;
   }
 
@@ -201,6 +204,17 @@ export class MemoryGame extends MiniGame {
       this.showTimer -= dt;
       if (this.showTimer <= 0) {
         this.subPhase = 'input';
+      }
+    }
+    if (this.phase === 'play' && this.subPhase === 'input') {
+      this.inputTimer -= dt;
+      if (this.inputTimer <= 0) {
+        this.inputTimer = 0;
+        this.totalCorrect += this.correctThisRound;
+        this.totalAttempted += this.sequence.length;
+        this.feedback = { correct: false, num: -1, expected: this.sequence[this.inputIdx] };
+        this.feedbackT = 0.8;
+        this.advanceSubRound(false);
       }
     }
     if (this.phase === 'result') {
@@ -356,6 +370,9 @@ export class MemoryGame extends MiniGame {
       } else if (this.subPhase === 'input') {
         this.drawSequence(ctx);
         this.drawNumpad(ctx);
+
+        const frac = this.inputTimer / this.inputTimeTotal;
+        this.timerBar(ctx, frac, PAL.gold, 142);
 
         ctx.save(); ctx.globalAlpha = 0.5;
         this.label(ctx, 'click or type the numbers in order', GW / 2, 530, 11, PAL.bone, 'center');
